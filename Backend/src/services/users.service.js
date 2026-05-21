@@ -13,21 +13,62 @@ function toISOStringSafe(value) {
 }
 
 async function ensureUserProfile({ uid, email, name, picture }) {
+    const normalizedEmail = (email || "").trim().toLowerCase();
+
     const ref = db.collection("users").doc(uid);
     const snap = await ref.get();
 
-    if (!snap.exists) {
-        const err = new Error("User profile not found");
+    if (snap.exists) {
+        await ref.set(
+            {
+                email: normalizedEmail || snap.data().email || "",
+                avatarUrl: picture || snap.data().avatarUrl || "",
+                updatedAt: new Date(),
+            },
+            { merge: true }
+        );
+
+        const after = await ref.get();
+        return { uid, ...after.data() };
+    }
+
+    const pendingSnap = await db
+        .collection("pending_users")
+        .where("email", "==", normalizedEmail)
+        .limit(1)
+        .get();
+
+    if (pendingSnap.empty) {
+        const err = new Error("Tài khoản chưa được cấp quyền trong hệ thống");
         err.statusCode = 404;
         throw err;
     }
 
-    await ref.update({
-        email: email || snap.data().email || "",
-        fullName: name || snap.data().fullName || "",
-        avatarUrl: picture || snap.data().avatarUrl || "",
+    const pendingDoc = pendingSnap.docs[0];
+    const pending = pendingDoc.data() || {};
+
+    await ref.set({
+        fullName: pending.fullName || name || "",
+        email: normalizedEmail,
+        role: pending.role || "student",
+        avatarUrl: picture || pending.avatarUrl || "",
+        phoneNumber: pending.phoneNumber || "",
+        address: pending.address || "",
+        department: pending.department || "",
+        majorId: pending.majorId || "",
+        isActive: pending.isActive !== false,
+        studentInfo: pending.studentInfo || null,
+        teacherInfo: pending.teacherInfo || null,
+        settings: pending.settings || {
+            theme: "system",
+            remindMinutes: 15,
+        },
+        fcmTokens: [],
+        createdAt: new Date(),
         updatedAt: new Date(),
     });
+
+    await pendingDoc.ref.delete();
 
     const after = await ref.get();
     return { uid, ...after.data() };
@@ -331,6 +372,292 @@ async function listTeachersByMajor(majorId) {
     return items;
 }
 
+async function createUserByAdmin(data) {
+    const email = await assertEmailNotExists(data.email);
+
+    const baseProfile = {
+        fullName: data.fullName,
+        email,
+        role: data.role,
+        avatarUrl: data.avatarUrl || "",
+        phoneNumber: data.phoneNumber || "",
+        address: data.address || "",
+        department: data.department || "",
+        majorId: data.majorId || "",
+        isActive: true,
+        studentInfo: data.role === "student" ? data.studentInfo || null : null,
+        teacherInfo: data.role === "teacher" ? data.teacherInfo || null : null,
+        settings: {
+            theme: "system",
+            remindMinutes: 15,
+        },
+        fcmTokens: [],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+    };
+
+    // Trường hợp đăng nhập email/password: tạo luôn Firebase Auth
+    if (data.loginProvider === "password") {
+        const userRecord = await admin.auth().createUser({
+            email,
+            password: data.password,
+            displayName: data.fullName,
+            disabled: false,
+        });
+
+        await db.collection("users").doc(userRecord.uid).set(baseProfile);
+
+        return {
+            uid: userRecord.uid,
+            pending: false,
+            ...baseProfile,
+        };
+    }
+
+    // Trường hợp Google: chỉ cấp quyền trước, chờ user login lần đầu
+    const pendingRef = await db.collection("pending_users").add({
+        ...baseProfile,
+        loginProvider: "google",
+        status: "pending",
+    });
+
+    return {
+        id: pendingRef.id,
+        pending: true,
+        ...baseProfile,
+    };
+}
+
+async function assertEmailNotExists(email) {
+    const normalizedEmail = (email || "").trim().toLowerCase();
+
+    if (!normalizedEmail) {
+        const err = new Error("Email is required");
+        err.statusCode = 400;
+        throw err;
+    }
+
+    const userSnap = await db
+        .collection("users")
+        .where("email", "==", normalizedEmail)
+        .limit(1)
+        .get();
+
+    if (!userSnap.empty) {
+        const err = new Error("Email already exists in users");
+        err.statusCode = 409;
+        throw err;
+    }
+
+    const pendingSnap = await db
+        .collection("pending_users")
+        .where("email", "==", normalizedEmail)
+        .limit(1)
+        .get();
+
+    if (!pendingSnap.empty) {
+        const err = new Error("Email already exists in pending users");
+        err.statusCode = 409;
+        throw err;
+    }
+
+    try {
+        await admin.auth().getUserByEmail(normalizedEmail);
+
+        const err = new Error("Email already exists in Firebase Auth");
+        err.statusCode = 409;
+        throw err;
+    } catch (error) {
+        if (error.code === "auth/user-not-found") {
+            return normalizedEmail;
+        }
+
+        if (error.statusCode === 409) {
+            throw error;
+        }
+
+        throw error;
+    }
+
+    return normalizedEmail;
+}
+
+async function importUsersByAdmin(users = []) {
+    const results = [];
+
+    let created = 0;
+    let pending = 0;
+    let failed = 0;
+    let duplicate = 0;
+
+    const seenEmails = new Set();
+
+    for (const item of users) {
+        const email = (item.email || "").trim().toLowerCase();
+
+        try {
+            if (seenEmails.has(email)) {
+                duplicate += 1;
+                failed += 1;
+
+                results.push({
+                    email,
+                    fullName: item.fullName || "",
+                    role: item.role || "",
+                    success: false,
+                    duplicate: true,
+                    error: "Duplicate email inside Excel file",
+                });
+
+                continue;
+            }
+
+            seenEmails.add(email);
+
+            const result = await createUserByAdmin({
+                ...item,
+                email,
+            });
+
+            results.push({
+                email,
+                fullName: item.fullName || "",
+                role: item.role || "",
+                success: true,
+                pending: result.pending === true,
+                uid: result.uid || null,
+                id: result.id || null,
+            });
+
+            if (result.pending === true) {
+                pending += 1;
+            } else {
+                created += 1;
+            }
+        } catch (error) {
+            failed += 1;
+
+            const isDuplicate =
+                (error.statusCode === 409) ||
+                String(error.message || "").toLowerCase().includes("already exists");
+
+            if (isDuplicate) {
+                duplicate += 1;
+            }
+
+            results.push({
+                email,
+                fullName: item.fullName || "",
+                role: item.role || "",
+                success: false,
+                duplicate: isDuplicate,
+                error: error.message || "Import failed",
+            });
+        }
+    }
+
+    return {
+        total: users.length,
+        created,
+        pending,
+        failed,
+        duplicate,
+        results,
+    };
+}
+
+async function checkImportUsersByAdmin(users = []) {
+    const results = [];
+    const seenEmails = new Set();
+
+    for (const item of users) {
+        const email = (item.email || "").trim().toLowerCase();
+        const errors = [];
+
+        if (!email) {
+            errors.push("Email is required");
+        }
+
+        if (seenEmails.has(email)) {
+            errors.push("Email bị trùng trong file Excel");
+        }
+
+        seenEmails.add(email);
+
+        const userSnap = await db
+            .collection("users")
+            .where("email", "==", email)
+            .limit(1)
+            .get();
+
+        if (!userSnap.empty) {
+            errors.push("Email đã tồn tại trong users");
+        }
+
+        const pendingSnap = await db
+            .collection("pending_users")
+            .where("email", "==", email)
+            .limit(1)
+            .get();
+
+        if (!pendingSnap.empty) {
+            errors.push("Email đang nằm trong danh sách chờ pending");
+        }
+
+        results.push({
+            email,
+            exists: errors.length > 0,
+            errors,
+        });
+    }
+
+    return results;
+}
+
+async function getMyProfile(uid) {
+    const snap = await db.collection("users").doc(uid).get();
+
+    if (!snap.exists) {
+        const err = new Error("User profile not found");
+        err.statusCode = 404;
+        throw err;
+    }
+
+    return {
+        uid: snap.id,
+        ...snap.data(),
+    };
+}
+
+async function updateMyProfile(uid, patch) {
+    const ref = db.collection("users").doc(uid);
+    const snap = await ref.get();
+
+    if (!snap.exists) {
+        const err = new Error("User profile not found");
+        err.statusCode = 404;
+        throw err;
+    }
+
+    const payload = {
+        updatedAt: new Date(),
+    };
+
+    if (patch.fullName !== undefined) payload.fullName = patch.fullName;
+    if (patch.phoneNumber !== undefined) payload.phoneNumber = patch.phoneNumber;
+    if (patch.address !== undefined) payload.address = patch.address;
+    if (patch.avatarUrl !== undefined) payload.avatarUrl = patch.avatarUrl;
+
+    await ref.set(payload, { merge: true });
+
+    const after = await ref.get();
+
+    return {
+        uid,
+        ...after.data(),
+    };
+}
+
 module.exports = {
     ensureUserProfile,
     updateMySettings,
@@ -344,4 +671,9 @@ module.exports = {
     deleteUserByAdmin,
     removeFcmToken,
     listTeachersByMajor,
+    createUserByAdmin,
+    importUsersByAdmin,
+    checkImportUsersByAdmin,
+    getMyProfile,
+    updateMyProfile,
 };

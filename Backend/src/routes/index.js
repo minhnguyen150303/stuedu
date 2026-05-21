@@ -19,5 +19,6 @@ router.use("/curriculum", require("./curriculum.routes"));
 router.use("/jobs", require("./jobs.routes"));
 router.use("/uploads", require("./uploads.routes"));
 router.use("/students", require("./students.routes"));
+router.use("/teachers", require("./teachers.routes"));
 
 module.exports = router;

@@ -3,6 +3,7 @@ const asyncHandler = require("../middlewares/async.middleware");
 const { requireAuth } = require("../middlewares/auth.middleware");
 const { requireRole } = require("../middlewares/role.middleware");
 const controller = require("../controllers/students.controller");
+const usersController = require("../controllers/users.controller");
 
 router.get(
     "/me/home",
@@ -87,6 +88,20 @@ router.post(
     requireAuth,
     requireRole(["student"]),
     asyncHandler(controller.registerCourseClass)
+);
+
+router.get(
+    "/me/profile",
+    requireAuth,
+    requireRole(["student"]),
+    asyncHandler(usersController.getMyProfile)
+);
+
+router.patch(
+    "/me/profile",
+    requireAuth,
+    requireRole(["student"]),
+    asyncHandler(usersController.updateMyProfile)
 );
 
 module.exports = router;

@@ -18,4 +18,22 @@ async function removeToken(req, res) {
     res.json(profile);
 }
 
-module.exports = { updateSettings, addToken, removeToken };
+async function getMyProfile(req, res) {
+    const data = await userService.getMyProfile(req.user.uid);
+
+    res.json(data);
+}
+
+async function updateMyProfile(req, res) {
+    const data = await userService.updateMyProfile(
+        req.user.uid,
+        req.body
+    );
+
+    res.json(data);
+}
+
+module.exports = {
+    updateSettings, addToken, removeToken, getMyProfile,
+    updateMyProfile,
+};

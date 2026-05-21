@@ -188,4 +188,95 @@ class AdminRepository {
 
     await api.post('/users/me/fcm-token', data: {'token': token});
   }
+
+  Future<Map<String, dynamic>> createUser({
+    required String fullName,
+    required String email,
+    required String role,
+    required String loginProvider,
+    String? password,
+    String? phoneNumber,
+    String? address,
+    String? department,
+    String? majorId,
+    Map<String, dynamic>? studentInfo,
+    Map<String, dynamic>? teacherInfo,
+  }) async {
+    await _attachToken();
+
+    final data = await api.post(
+      '/admin/users',
+      data: {
+        'fullName': fullName,
+        'email': email,
+        'role': role,
+        'loginProvider': loginProvider,
+        if (password != null && password.isNotEmpty) 'password': password,
+        'phoneNumber': phoneNumber ?? '',
+        'address': address ?? '',
+        'department': department ?? '',
+        'majorId': majorId ?? '',
+        if (studentInfo != null) 'studentInfo': studentInfo,
+        if (teacherInfo != null) 'teacherInfo': teacherInfo,
+      },
+    );
+
+    return Map<String, dynamic>.from(data as Map);
+  }
+
+  Future<Map<String, dynamic>> importUsers({
+    required List<Map<String, dynamic>> users,
+  }) async {
+    await _attachToken();
+
+    final data = await api.post('/admin/users/import', data: {'users': users});
+
+    return Map<String, dynamic>.from(data as Map);
+  }
+
+  Future<List<Map<String, dynamic>>> checkImportUsers({
+    required List<Map<String, dynamic>> users,
+  }) async {
+    await _attachToken();
+
+    final data = await api.post(
+      '/admin/users/import/check',
+      data: {'users': users},
+    );
+
+    if (data is List) {
+      return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    }
+
+    return [];
+  }
+
+  Future<Map<String, dynamic>> getMyProfile() async {
+    await _attachToken();
+
+    final data = await api.get('/admin/me/profile');
+
+    return Map<String, dynamic>.from(data as Map);
+  }
+
+  Future<Map<String, dynamic>> updateMyProfile({
+    String? fullName,
+    String? phoneNumber,
+    String? address,
+    String? avatarUrl,
+  }) async {
+    await _attachToken();
+
+    final data = await api.patch(
+      '/admin/me/profile',
+      data: {
+        'fullName': fullName,
+        'phoneNumber': phoneNumber,
+        'address': address,
+        'avatarUrl': avatarUrl,
+      }..removeWhere((key, value) => value == null),
+    );
+
+    return Map<String, dynamic>.from(data as Map);
+  }
 }

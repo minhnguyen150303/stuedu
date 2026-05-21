@@ -325,4 +325,33 @@ class TeacherRepository {
     final data = await _api.patch('/notifications/$id/read');
     return Map<String, dynamic>.from(data as Map);
   }
+
+  Future<Map<String, dynamic>> getMyProfile() async {
+    await _attachToken();
+
+    final data = await _api.get('/teachers/me/profile');
+
+    return Map<String, dynamic>.from(data as Map);
+  }
+
+  Future<Map<String, dynamic>> updateMyProfile({
+    String? fullName,
+    String? phoneNumber,
+    String? address,
+    String? avatarUrl,
+  }) async {
+    await _attachToken();
+
+    final data = await _api.patch(
+      '/teachers/me/profile',
+      data: {
+        'fullName': fullName,
+        'phoneNumber': phoneNumber,
+        'address': address,
+        'avatarUrl': avatarUrl,
+      }..removeWhere((key, value) => value == null),
+    );
+
+    return Map<String, dynamic>.from(data as Map);
+  }
 }

@@ -7,8 +7,11 @@ const {
     validateRolePatch,
     validateAdminUserUpdate,
     validateUserLockPatch,
+    validateAdminCreateUser,
+    validateAdminImportUsers,
 } = require("../models/validators");
 const controller = require("../controllers/admin.controller");
+const usersController = require("../controllers/users.controller");
 
 router.get(
     "/user-stats",
@@ -29,6 +32,29 @@ router.get(
     requireAuth,
     requireRole(["admin"]),
     asyncHandler(controller.listTeachersByMajor)
+);
+
+router.post(
+    "/users",
+    requireAuth,
+    requireRole(["admin"]),
+    validate(validateAdminCreateUser),
+    asyncHandler(controller.createUser)
+);
+
+router.post(
+    "/users/import/check",
+    requireAuth,
+    requireRole(["admin"]),
+    asyncHandler(controller.checkImportUsers)
+);
+
+router.post(
+    "/users/import",
+    requireAuth,
+    requireRole(["admin"]),
+    validate(validateAdminImportUsers),
+    asyncHandler(controller.importUsers)
 );
 
 router.get(
@@ -68,5 +94,20 @@ router.patch(
     validate(validateRolePatch),
     asyncHandler(controller.setRole)
 );
+
+router.get(
+    "/me/profile",
+    requireAuth,
+    requireRole(["admin"]),
+    asyncHandler(usersController.getMyProfile)
+);
+
+router.patch(
+    "/me/profile",
+    requireAuth,
+    requireRole(["admin"]),
+    asyncHandler(usersController.updateMyProfile)
+);
+
 
 module.exports = router;

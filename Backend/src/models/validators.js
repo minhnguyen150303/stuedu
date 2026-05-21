@@ -664,6 +664,109 @@ function validateAdminAddStudent(body) {
     return { ok: errors.length === 0, errors };
 }
 
+function validateAdminCreateUser(body) {
+    const errors = [];
+
+    if (!requiredString(body.fullName)) errors.push("fullName is required");
+    if (!requiredString(body.email)) errors.push("email is required");
+    if (!requiredString(body.role)) errors.push("role is required");
+
+    const allowedRoles = ["admin", "teacher", "student"];
+    if (body.role && !allowedRoles.includes(body.role)) {
+        errors.push("role must be admin/teacher/student");
+    }
+
+    if (!requiredString(body.loginProvider)) {
+        errors.push("loginProvider is required");
+    }
+
+    const allowedProviders = ["google", "password"];
+    if (body.loginProvider && !allowedProviders.includes(body.loginProvider)) {
+        errors.push("loginProvider must be google/password");
+    }
+
+    if (body.loginProvider === "password" && !requiredString(body.password)) {
+        errors.push("password is required for password login");
+    }
+
+    if (body.role === "student") {
+        if (!body.studentInfo || typeof body.studentInfo !== "object") {
+            errors.push("studentInfo is required for student");
+        } else {
+            if (!requiredString(body.studentInfo.studentCode)) {
+                errors.push("studentInfo.studentCode is required");
+            }
+            if (typeof body.studentInfo.year !== "number") {
+                errors.push("studentInfo.year is required and must be number");
+            }
+            if (!requiredString(body.studentInfo.className)) {
+                errors.push("studentInfo.className is required");
+            }
+        }
+    }
+
+    return { ok: errors.length === 0, errors };
+}
+
+function validateAdminImportUsers(body) {
+    const errors = [];
+
+    if (!Array.isArray(body.users) || body.users.length === 0) {
+        errors.push("users must be non-empty array");
+        return { ok: false, errors };
+    }
+
+    if (body.users.length > 500) {
+        errors.push("Maximum 500 users per import");
+    }
+
+    body.users.forEach((user, index) => {
+        const prefix = `users[${index}]`;
+
+        if (!requiredString(user.fullName)) {
+            errors.push(`${prefix}.fullName is required`);
+        }
+
+        if (!requiredString(user.email)) {
+            errors.push(`${prefix}.email is required`);
+        }
+
+        if (!requiredString(user.role)) {
+            errors.push(`${prefix}.role is required`);
+        } else if (!["admin", "teacher", "student"].includes(user.role)) {
+            errors.push(`${prefix}.role must be admin/teacher/student`);
+        }
+
+        if (!requiredString(user.loginProvider)) {
+            errors.push(`${prefix}.loginProvider is required`);
+        } else if (!["google", "password"].includes(user.loginProvider)) {
+            errors.push(`${prefix}.loginProvider must be google/password`);
+        }
+
+        if (user.loginProvider === "password" && !requiredString(user.password)) {
+            errors.push(`${prefix}.password is required for password login`);
+        }
+
+        if (user.role === "student") {
+            if (!user.studentInfo || typeof user.studentInfo !== "object") {
+                errors.push(`${prefix}.studentInfo is required for student`);
+            } else {
+                if (!requiredString(user.studentInfo.studentCode)) {
+                    errors.push(`${prefix}.studentInfo.studentCode is required`);
+                }
+                if (typeof user.studentInfo.year !== "number") {
+                    errors.push(`${prefix}.studentInfo.year must be number`);
+                }
+                if (!requiredString(user.studentInfo.className)) {
+                    errors.push(`${prefix}.studentInfo.className is required`);
+                }
+            }
+        }
+    });
+
+    return { ok: errors.length === 0, errors };
+}
+
 module.exports = {
     validateCourse,
     validateCoursePatch,
@@ -691,4 +794,6 @@ module.exports = {
     validateCurriculum,
     validateCurriculumPatch,
     validateAdminAddStudent,
+    validateAdminCreateUser,
+    validateAdminImportUsers,
 };

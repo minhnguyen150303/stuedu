@@ -4,6 +4,7 @@ import '../../../data/repositories/admin_repository.dart';
 import '../../../data/sources/remote/api_client.dart';
 import '../../../data/repositories/admin_academic_repository.dart';
 import 'admin_user_detail_screen.dart';
+import 'admin_add_user_screen.dart';
 
 class AdminUsersScreen extends StatefulWidget {
   const AdminUsersScreen({super.key});
@@ -411,10 +412,17 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
     super.dispose();
   }
 
-  void _onAddUser() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Chức năng thêm người dùng sẽ làm sau.')),
+  Future<void> _onAddUser() async {
+    final changed = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => const AdminAddUserScreen()),
     );
+
+    if (changed == true) {
+      setState(() {
+        _currentPage = 1;
+      });
+    }
   }
 
   @override

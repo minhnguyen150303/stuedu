@@ -11,6 +11,7 @@ import 'admin_users_screen.dart';
 import 'majors/admin_majors_screen.dart';
 import 'admin_send_notification_screen.dart';
 import 'admin_notifications_screen.dart';
+import 'admin_add_user_screen.dart';
 
 class AdminHomeScreen extends StatefulWidget {
   final Map<String, dynamic> profile;
@@ -35,12 +36,16 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
     });
   }
 
-  void _showAddUserComingSoon() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Chức năng thêm người dùng sẽ được triển khai sau.'),
-      ),
+  Future<void> _showAddUserComingSoon() async {
+    final changed = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => const AdminAddUserScreen()),
     );
+
+    if (changed == true) {
+      _reloadStats();
+      await _loadUnreadCount();
+    }
   }
 
   Future<void> _refreshDashboard() async {

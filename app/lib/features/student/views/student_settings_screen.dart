@@ -7,6 +7,7 @@ import 'student_courses_screen.dart';
 import 'student_grades_screen.dart';
 import '../../auth/views/welcome_screen.dart';
 import '../../../core/services/push_notification_service.dart';
+import 'student_profile_screen.dart';
 
 class StudentSettingsScreen extends StatelessWidget {
   final Map<String, dynamic> profile;
@@ -171,6 +172,35 @@ class StudentSettingsScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: ListTile(
+              leading: const Icon(
+                Icons.person_rounded,
+                color: Color(0xFF2563EB),
+              ),
+              title: const Text(
+                'Thông tin cá nhân',
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF0F172A),
+                ),
+              ),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => StudentProfileScreen(profile: profile),
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 12),
           Container(
             decoration: BoxDecoration(
               color: Colors.white,

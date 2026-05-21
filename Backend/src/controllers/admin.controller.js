@@ -47,6 +47,30 @@ async function listTeachersByMajor(req, res) {
     res.json(data);
 }
 
+async function createUser(req, res) {
+    const data = await userService.createUserByAdmin(req.body);
+    res.status(201).json({
+        message: data.pending
+            ? "User invitation created"
+            : "User created",
+        ...data,
+    });
+}
+
+async function importUsers(req, res) {
+    const data = await userService.importUsersByAdmin(req.body.users || []);
+
+    res.status(201).json({
+        message: "Users import completed",
+        ...data,
+    });
+}
+
+async function checkImportUsers(req, res) {
+    const data = await userService.checkImportUsersByAdmin(req.body.users || []);
+    res.json(data);
+}
+
 module.exports = {
     setRole,
     userStats,
@@ -56,4 +80,7 @@ module.exports = {
     lockUser,
     deleteUser,
     listTeachersByMajor,
+    createUser,
+    importUsers,
+    checkImportUsers,
 };

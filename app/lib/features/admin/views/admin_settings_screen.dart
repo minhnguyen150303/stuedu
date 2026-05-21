@@ -6,6 +6,7 @@ import 'admin_home_screen.dart';
 import 'admin_users_screen.dart';
 import 'majors/admin_majors_screen.dart';
 import '../../../core/services/push_notification_service.dart';
+import 'admin_profile_screen.dart';
 
 class AdminSettingsScreen extends StatelessWidget {
   final Map<String, dynamic> profile;
@@ -117,6 +118,35 @@ class AdminSettingsScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: ListTile(
+              leading: const Icon(
+                Icons.person_rounded,
+                color: Color(0xFF1B2A8A),
+              ),
+              title: const Text(
+                'Thông tin cá nhân',
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF0F172A),
+                ),
+              ),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => AdminProfileScreen(profile: profile),
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 12),
           Container(
             decoration: BoxDecoration(
               color: Colors.white,
