@@ -515,8 +515,8 @@ function validateMaterial(body) {
 function validateRolePatch(body) {
     const errors = [];
     if (!requiredString(body.role)) errors.push("role is required");
-    const allowed = ["admin", "teacher", "student"];
-    if (body.role && !allowed.includes(body.role)) errors.push("role must be admin/teacher/student");
+    const allowed = ["admin", "teacher", "student", "qlsv"];
+    if (body.role && !allowed.includes(body.role)) errors.push("role must be admin/teacher/student/qlsv");
     return { ok: errors.length === 0, errors };
 }
 
@@ -565,9 +565,9 @@ function validateAdminUserUpdate(body) {
     }
 
     if (body.role != null) {
-        const allowed = ["admin", "teacher", "student"];
+        const allowed = ["admin", "teacher", "student", "qlsv"];
         if (!allowed.includes(body.role)) {
-            errors.push("role must be admin/teacher/student");
+            errors.push("role must be admin/teacher/student/qlsv");
         }
     }
 
@@ -671,9 +671,9 @@ function validateAdminCreateUser(body) {
     if (!requiredString(body.email)) errors.push("email is required");
     if (!requiredString(body.role)) errors.push("role is required");
 
-    const allowedRoles = ["admin", "teacher", "student"];
+    const allowedRoles = ["admin", "teacher", "student", "qlsv"];
     if (body.role && !allowedRoles.includes(body.role)) {
-        errors.push("role must be admin/teacher/student");
+        errors.push("role must be admin/teacher/student/qlsv");
     }
 
     if (!requiredString(body.loginProvider)) {
@@ -733,8 +733,8 @@ function validateAdminImportUsers(body) {
 
         if (!requiredString(user.role)) {
             errors.push(`${prefix}.role is required`);
-        } else if (!["admin", "teacher", "student"].includes(user.role)) {
-            errors.push(`${prefix}.role must be admin/teacher/student`);
+        } else if (!["admin", "teacher", "student", "qlsv"].includes(user.role)) {
+            errors.push(`${prefix}.role must be admin/teacher/student/qlsv`);
         }
 
         if (!requiredString(user.loginProvider)) {

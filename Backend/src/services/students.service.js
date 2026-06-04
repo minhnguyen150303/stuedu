@@ -191,6 +191,19 @@ function getAcademicStartYear(now = new Date()) {
     return month >= 7 ? now.getFullYear() : now.getFullYear() - 1;
 }
 
+function isSameLocalDate(a, b) {
+    const da = toDateSafe(a);
+    const db = toDateSafe(b);
+
+    if (!da || !db) return false;
+
+    return (
+        da.getFullYear() === db.getFullYear() &&
+        da.getMonth() === db.getMonth() &&
+        da.getDate() === db.getDate()
+    );
+}
+
 function getDateYearForAcademicCycle(month, academicStartYear) {
     return month >= 7 ? academicStartYear : academicStartYear + 1;
 }
@@ -390,6 +403,34 @@ async function getCourseMapByIds(courseIds = []) {
                 ...snap.data(),
             };
         }
+    }
+
+    return map;
+}
+
+async function getExamSchedulesByCourseIds(courseIds = []) {
+    const map = {};
+
+    for (const courseId of courseIds) {
+        if (!courseId || map[courseId]) continue;
+
+        const snap = await db.collection("exam_schedules")
+            .where("courseId", "==", courseId)
+            .get();
+
+        map[courseId] = snap.docs.map((doc) => {
+            const data = doc.data() || {};
+
+            return {
+                id: doc.id,
+                courseId: data.courseId || "",
+                semesterId: data.semesterId || "",
+                examDate: toISOStringSafe(data.examDate),
+                examRoom: data.examRoom || "",
+                examType: data.examType || "final",
+                note: data.note || "",
+            };
+        });
     }
 
     return map;
@@ -1167,6 +1208,86 @@ async function getMyNotifications(studentId) {
     return items;
 }
 
+// async function getStudentHome(studentId) {
+//     const student = await getStudentProfile(studentId);
+//     const enrollments = await getApprovedEnrollments(studentId);
+
+//     const classIds = enrollments.map((e) => e.classId).filter(Boolean);
+//     const classMap = await getClassMapByIds(classIds);
+//     const classes = Object.values(classMap);
+
+//     const courseIds = classes.map((c) => c.courseId).filter(Boolean);
+//     const courseMap = await getCourseMapByIds(courseIds);
+
+//     let registeredCredits = 0;
+//     for (const cls of classes) {
+//         const course = courseMap[cls.courseId] || {};
+//         registeredCredits += Number(course.credits || 0);
+//     }
+
+//     const totalMajorCredits = await getTotalMajorCredits(student.majorId);
+
+//     const gradeSnap = await db.collection("grades")
+//         .where("studentId", "==", studentId)
+//         .get();
+
+//     const grades = gradeSnap.docs.map((d) => ({
+//         id: d.id,
+//         ...d.data(),
+//     }));
+
+//     let totalFourWeighted = 0;
+//     let totalCreditsForGpa = 0;
+
+//     for (const g of grades) {
+//         const cls = classMap[g.classId] || null;
+//         if (!cls) continue;
+
+//         const course = courseMap[cls.courseId] || {};
+//         const credits = Number(course.credits || 0);
+//         if (credits <= 0) continue;
+
+//         const totalTen = Number(g.totalTen || 0);
+//         const gpa4 = tenToFour(totalTen);
+
+//         totalFourWeighted += gpa4 * credits;
+//         totalCreditsForGpa += credits;
+//     }
+
+//     const gpa4 = totalCreditsForGpa > 0
+//         ? round(totalFourWeighted / totalCreditsForGpa, 2)
+//         : 0;
+
+//     const todaySchedule = await getTodaySchedule(studentId);
+//     const upcomingDeadlines = await getUpcomingAssignments(studentId, 5);
+
+//     // Lấy tiến độ tín chỉ chuẩn: đã đạt / đang học / nợ / chưa học
+//     const creditProgress = await getCreditProgress(studentId);
+//     const creditSummary = creditProgress.summary || {};
+
+//     return {
+//         student,
+//         summary: {
+//             gpa4,
+
+//             // Giữ field cũ để không vỡ app cũ
+//             registeredCredits,
+
+//             // Field mới dùng cho Home
+//             earnedCredits: creditSummary.earnedCredits ?? 0,
+//             inProgressCredits: creditSummary.inProgressCredits ?? 0,
+//             failedCredits: creditSummary.failedCredits ?? 0,
+//             notStartedCredits: creditSummary.notStartedCredits ?? 0,
+
+//             totalMajorCredits: creditSummary.requiredCredits || totalMajorCredits,
+//             approvedClassCount: classes.length,
+//         },
+//         todaySchedule,
+//         upcomingDeadlines,
+//     };
+// }
+
+
 async function getStudentHome(studentId) {
     const student = await getStudentProfile(studentId);
     const enrollments = await getApprovedEnrollments(studentId);
@@ -1184,21 +1305,15 @@ async function getStudentHome(studentId) {
         registeredCredits += Number(course.credits || 0);
     }
 
-    const totalMajorCredits = await getTotalMajorCredits(student.majorId);
-
     const gradeSnap = await db.collection("grades")
         .where("studentId", "==", studentId)
         .get();
 
-    const grades = gradeSnap.docs.map((d) => ({
-        id: d.id,
-        ...d.data(),
-    }));
-
     let totalFourWeighted = 0;
     let totalCreditsForGpa = 0;
 
-    for (const g of grades) {
+    for (const doc of gradeSnap.docs) {
+        const g = doc.data() || {};
         const cls = classMap[g.classId] || null;
         if (!cls) continue;
 
@@ -1207,9 +1322,9 @@ async function getStudentHome(studentId) {
         if (credits <= 0) continue;
 
         const totalTen = Number(g.totalTen || 0);
-        const gpa4 = tenToFour(totalTen);
+        const gpa4Item = tenToFour(totalTen);
 
-        totalFourWeighted += gpa4 * credits;
+        totalFourWeighted += gpa4Item * credits;
         totalCreditsForGpa += credits;
     }
 
@@ -1220,7 +1335,6 @@ async function getStudentHome(studentId) {
     const todaySchedule = await getTodaySchedule(studentId);
     const upcomingDeadlines = await getUpcomingAssignments(studentId, 5);
 
-    // Lấy tiến độ tín chỉ chuẩn: đã đạt / đang học / nợ / chưa học
     const creditProgress = await getCreditProgress(studentId);
     const creditSummary = creditProgress.summary || {};
 
@@ -1228,17 +1342,14 @@ async function getStudentHome(studentId) {
         student,
         summary: {
             gpa4,
-
-            // Giữ field cũ để không vỡ app cũ
             registeredCredits,
 
-            // Field mới dùng cho Home
             earnedCredits: creditSummary.earnedCredits ?? 0,
             inProgressCredits: creditSummary.inProgressCredits ?? 0,
             failedCredits: creditSummary.failedCredits ?? 0,
             notStartedCredits: creditSummary.notStartedCredits ?? 0,
 
-            totalMajorCredits: creditSummary.requiredCredits || totalMajorCredits,
+            totalMajorCredits: creditSummary.requiredCredits ?? 0,
             approvedClassCount: classes.length,
         },
         todaySchedule,
@@ -1262,6 +1373,8 @@ async function getWeeklySchedule(studentId, dateText = null) {
 
     const courseIds = classes.map((c) => c.courseId).filter(Boolean);
     const courseMap = await getCourseMapByIds(courseIds);
+
+    const examMap = await getExamSchedulesByCourseIds(courseIds);
 
     const days = weekDates.map((date) => {
         const systemDay = toSystemDayOfWeek(date);
@@ -1299,10 +1412,38 @@ async function getWeeklySchedule(studentId, dateText = null) {
 
         lessons.sort((a, b) => a.startTime.localeCompare(b.startTime));
 
+        const exams = classes.flatMap((cls) => {
+            const course = courseMap[cls.courseId] || {};
+            const courseExams = examMap[cls.courseId] || [];
+
+            return courseExams
+                .filter((exam) => {
+                    if (exam.semesterId && cls.semesterId) {
+                        return exam.semesterId === cls.semesterId &&
+                            isSameLocalDate(exam.examDate, date);
+                    }
+
+                    return isSameLocalDate(exam.examDate, date);
+                })
+                .map((exam) => ({
+                    ...exam,
+                    classId: cls.id,
+                    classCode: cls.classCode || "",
+                    courseName: course.courseName || "",
+                    courseCode: course.courseCode || "",
+                    credits: Number(course.credits || 0),
+                    room: exam.examRoom || "",
+                    date: exam.examDate,
+                }));
+        });
+
+        exams.sort((a, b) => new Date(a.examDate || 0) - new Date(b.examDate || 0));
+
         return {
             date: date.toISOString(),
             dayOfWeek: systemDay,
             lessons,
+            exams,
         };
     });
 
@@ -1337,6 +1478,8 @@ async function getMonthlySchedule(studentId, monthText = null) {
 
     const courseIds = classes.map((c) => c.courseId).filter(Boolean);
     const courseMap = await getCourseMapByIds(courseIds);
+
+    const examMap = await getExamSchedulesByCourseIds(courseIds);
 
     const semesterIds = classes.map((c) => c.semesterId).filter(Boolean);
     const semesterTimelineMap = await getSemesterTimelineMapByIds(semesterIds);
@@ -1380,10 +1523,38 @@ async function getMonthlySchedule(studentId, monthText = null) {
 
         lessons.sort((a, b) => a.startTime.localeCompare(b.startTime));
 
+        const exams = classes.flatMap((cls) => {
+            const course = courseMap[cls.courseId] || {};
+            const courseExams = examMap[cls.courseId] || [];
+
+            return courseExams
+                .filter((exam) => {
+                    if (exam.semesterId && cls.semesterId) {
+                        return exam.semesterId === cls.semesterId &&
+                            isSameLocalDate(exam.examDate, date);
+                    }
+
+                    return isSameLocalDate(exam.examDate, date);
+                })
+                .map((exam) => ({
+                    ...exam,
+                    classId: cls.id,
+                    classCode: cls.classCode || "",
+                    courseName: course.courseName || "",
+                    courseCode: course.courseCode || "",
+                    credits: Number(course.credits || 0),
+                    room: exam.examRoom || "",
+                    date: exam.examDate,
+                }));
+        });
+
+        exams.sort((a, b) => new Date(a.examDate || 0) - new Date(b.examDate || 0));
+
         days.push({
             date: date.toISOString(),
             dayOfWeek: systemDay,
             lessons,
+            exams,
         });
     }
 

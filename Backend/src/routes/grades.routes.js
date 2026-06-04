@@ -9,7 +9,7 @@ const controller = require("../controllers/grades.controller");
 router.get(
     "/",
     requireAuth,
-    requireRole(["teacher", "admin"]),
+    requireRole(["teacher", "admin", "qlsv"]),
     asyncHandler(controller.list)
 );
 
@@ -19,6 +19,42 @@ router.post(
     requireRole(["teacher", "admin"]),
     validate(validateGrade),
     asyncHandler(controller.upsert)
+);
+
+router.post(
+    "/final",
+    requireAuth,
+    requireRole(["qlsv", "admin"]),
+    validate(validateGrade),
+    asyncHandler(controller.upsertFinal)
+);
+
+router.post(
+    "/import/check",
+    requireAuth,
+    requireRole(["teacher"]),
+    asyncHandler(controller.checkImportTeacherGrades)
+);
+
+router.post(
+    "/import",
+    requireAuth,
+    requireRole(["teacher"]),
+    asyncHandler(controller.importTeacherGrades)
+);
+
+router.post(
+    "/final/import/check",
+    requireAuth,
+    requireRole(["qlsv", "admin"]),
+    asyncHandler(controller.checkImportFinalGrades)
+);
+
+router.post(
+    "/final/import",
+    requireAuth,
+    requireRole(["qlsv", "admin"]),
+    asyncHandler(controller.importFinalGrades)
 );
 
 module.exports = router;

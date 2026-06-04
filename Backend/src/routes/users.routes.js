@@ -5,6 +5,18 @@ const { requireAuth } = require("../middlewares/auth.middleware");
 const { validateSettingsPatch, validateFcmToken } = require("../models/validators");
 const controller = require("../controllers/users.controller");
 
+router.get(
+    "/me",
+    requireAuth,
+    asyncHandler(controller.getMyProfile)
+);
+
+router.patch(
+    "/me",
+    requireAuth,
+    asyncHandler(controller.updateMyProfile)
+);
+
 router.patch("/me/settings", requireAuth, validate(validateSettingsPatch), asyncHandler(controller.updateSettings));
 router.post("/me/fcm-token", requireAuth, validate(validateFcmToken), asyncHandler(controller.addToken));
 router.delete(

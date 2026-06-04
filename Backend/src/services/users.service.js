@@ -311,10 +311,41 @@ async function deleteUserByAdmin(uid) {
         throw err;
     }
 
-    await admin.auth().deleteUser(uid);
+    const user = snap.data() || {};
+    const email = (user.email || "").trim().toLowerCase();
+
+    // Xóa Firebase Auth theo UID
+    try {
+        await admin.auth().deleteUser(uid);
+    } catch (error) {
+        // Nếu Auth không còn user thì vẫn cho xóa Firestore
+        if (error.code !== "auth/user-not-found") {
+            throw error;
+        }
+    }
+
+    // Xóa user trong users
     await ref.delete();
 
-    return { uid, deleted: true };
+    // Xóa luôn pending_users nếu còn email này
+    if (email) {
+        const pendingSnap = await db
+            .collection("pending_users")
+            .where("email", "==", email)
+            .get();
+
+        const batch = db.batch();
+
+        pendingSnap.docs.forEach((doc) => {
+            batch.delete(doc.ref);
+        });
+
+        if (!pendingSnap.empty) {
+            await batch.commit();
+        }
+    }
+
+    return { uid, email, deleted: true };
 }
 
 async function removeFcmToken(uid, token) {
@@ -383,10 +414,15 @@ async function createUserByAdmin(data) {
         phoneNumber: data.phoneNumber || "",
         address: data.address || "",
         department: data.department || "",
-        majorId: data.majorId || "",
+        majorId: data.role === "admin" || data.role === "qlsv"
+            ? ""
+            : data.majorId || "",
         isActive: true,
+
         studentInfo: data.role === "student" ? data.studentInfo || null : null,
         teacherInfo: data.role === "teacher" ? data.teacherInfo || null : null,
+        qlsvInfo: data.role === "qlsv" ? data.qlsvInfo || null : null,
+
         settings: {
             theme: "system",
             remindMinutes: 15,

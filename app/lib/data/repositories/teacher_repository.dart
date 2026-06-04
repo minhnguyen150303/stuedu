@@ -251,7 +251,6 @@ class TeacherRepository {
     required String studentId,
     required double scoreProcess,
     required double scoreMid,
-    required double scoreFinal,
   }) async {
     await _attachToken();
 
@@ -262,7 +261,6 @@ class TeacherRepository {
         'studentId': studentId,
         'scoreProcess': scoreProcess,
         'scoreMid': scoreMid,
-        'scoreFinal': scoreFinal,
       },
     );
   }
@@ -350,6 +348,34 @@ class TeacherRepository {
         'address': address,
         'avatarUrl': avatarUrl,
       }..removeWhere((key, value) => value == null),
+    );
+
+    return Map<String, dynamic>.from(data as Map);
+  }
+
+  Future<Map<String, dynamic>> checkImportGrades({
+    required String classId,
+    required List<Map<String, dynamic>> rows,
+  }) async {
+    await _attachToken();
+
+    final data = await _api.post(
+      '/grades/import/check',
+      data: {'classId': classId, 'rows': rows},
+    );
+
+    return Map<String, dynamic>.from(data as Map);
+  }
+
+  Future<Map<String, dynamic>> importGrades({
+    required String classId,
+    required List<Map<String, dynamic>> rows,
+  }) async {
+    await _attachToken();
+
+    final data = await _api.post(
+      '/grades/import',
+      data: {'classId': classId, 'rows': rows},
     );
 
     return Map<String, dynamic>.from(data as Map);

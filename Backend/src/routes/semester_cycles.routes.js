@@ -12,14 +12,14 @@ const controller = require("../controllers/semester_cycles.controller");
 router.get(
     "/",
     requireAuth,
-    requireRole(["admin"]),
+    requireRole(["admin", "qlsv"]),
     asyncHandler(controller.list)
 );
 
 router.get(
     "/history",
     requireAuth,
-    requireRole(["admin"]),
+    requireRole(["admin", "qlsv"]),
     asyncHandler(controller.history)
 );
 

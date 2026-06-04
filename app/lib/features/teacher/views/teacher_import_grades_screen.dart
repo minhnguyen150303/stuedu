@@ -5,32 +5,35 @@ import 'package:file_picker/file_picker.dart' as fp;
 import 'package:flutter/material.dart';
 
 import '../../../core/config/app_config.dart';
-import '../../../data/repositories/admin_repository.dart';
+import '../../../data/repositories/teacher_repository.dart';
 import '../../../data/sources/remote/api_client.dart';
 
-class AdminImportUsersScreen extends StatefulWidget {
-  const AdminImportUsersScreen({super.key});
+class TeacherImportGradesScreen extends StatefulWidget {
+  final String classId;
+
+  const TeacherImportGradesScreen({super.key, required this.classId});
 
   @override
-  State<AdminImportUsersScreen> createState() => _AdminImportUsersScreenState();
+  State<TeacherImportGradesScreen> createState() =>
+      _TeacherImportGradesScreenState();
 }
 
-class _AdminImportUsersScreenState extends State<AdminImportUsersScreen> {
+class _TeacherImportGradesScreenState extends State<TeacherImportGradesScreen> {
   static const _primary = Color(0xFF1B2A8A);
 
-  late final AdminRepository _repo;
+  late final TeacherRepository _repo;
 
   bool _loading = false;
   bool _importing = false;
 
   String? _fileName;
-  List<ImportUserRow> _rows = [];
+  List<ImportGradeRow> _rows = [];
   Map<String, dynamic>? _result;
 
   @override
   void initState() {
     super.initState();
-    _repo = AdminRepository(ApiClient(AppConfig.baseUrl));
+    _repo = TeacherRepository(ApiClient(AppConfig.baseUrl));
   }
 
   String _cellToString(ex.Data? cell) {
@@ -39,16 +42,17 @@ class _AdminImportUsersScreenState extends State<AdminImportUsersScreen> {
     return value.toString().trim();
   }
 
-  int? _parseYear(String value) {
-    final text = value.trim();
+  double? _parseScore(String value) {
+    final text = value.trim().replaceAll(',', '.');
     if (text.isEmpty) return null;
-    return int.tryParse(text);
+    return double.tryParse(text);
   }
 
   Future<void> _pickExcelFile() async {
     setState(() {
       _loading = true;
       _result = null;
+      _rows = [];
     });
 
     try {
@@ -72,7 +76,7 @@ class _AdminImportUsersScreenState extends State<AdminImportUsersScreen> {
         throw Exception('File Excel không có sheet dữ liệu');
       }
 
-      final parsedRows = <ImportUserRow>[];
+      final parsedRows = <ImportGradeRow>[];
 
       for (int i = 1; i < sheet.rows.length; i++) {
         final row = sheet.rows[i];
@@ -82,89 +86,69 @@ class _AdminImportUsersScreenState extends State<AdminImportUsersScreen> {
           return _cellToString(row[index]);
         }
 
-        final fullName = get(0);
-        final email = get(1).toLowerCase();
-        final role = get(2).toLowerCase();
-        final loginProvider = get(3).toLowerCase().isEmpty
-            ? 'google'
-            : get(3).toLowerCase();
-        final password = get(4);
-        final phoneNumber = get(5);
-        final address = get(6);
-        final majorId = get(7);
-        final department = get(8);
-        final studentCode = get(9);
-        final year = _parseYear(get(10));
-        final className = get(11);
+        final studentCode = get(0);
+        final scoreProcessText = get(1);
+        final scoreMidText = get(2);
 
-        if (fullName.isEmpty && email.isEmpty) {
+        if (studentCode.isEmpty &&
+            scoreProcessText.isEmpty &&
+            scoreMidText.isEmpty) {
           continue;
         }
 
+        final scoreProcess = _parseScore(scoreProcessText);
+        final scoreMid = _parseScore(scoreMidText);
+
         final errors = <String>[];
 
-        if (fullName.isEmpty) errors.add('Thiếu họ tên');
-        if (email.isEmpty || !email.contains('@'))
-          errors.add('Email không hợp lệ');
-
-        if (!['student', 'teacher', 'admin', 'qlsv'].contains(role)) {
-          errors.add('Role phải là student/teacher/admin/qlsv');
+        if (studentCode.isEmpty) {
+          errors.add('Thiếu mã sinh viên');
         }
 
-        if (!['google', 'password'].contains(loginProvider)) {
-          errors.add('loginProvider phải là google/password');
+        if (scoreProcess == null || scoreProcess < 0 || scoreProcess > 10) {
+          errors.add('Điểm chuyên cần phải từ 0 đến 10');
         }
 
-        if (loginProvider == 'password' && password.length < 6) {
-          errors.add('Password tối thiểu 6 ký tự');
-        }
-
-        if ((role == 'student' || role == 'teacher') && majorId.isEmpty) {
-          errors.add('Thiếu majorId');
-        }
-
-        if (role == 'student') {
-          if (studentCode.isEmpty) errors.add('Thiếu mã sinh viên');
-          if (year == null) errors.add('Thiếu năm học');
-          if (className.isEmpty) errors.add('Thiếu lớp hành chính');
+        if (scoreMid == null || scoreMid < 0 || scoreMid > 10) {
+          errors.add('Điểm giữa kỳ phải từ 0 đến 10');
         }
 
         parsedRows.add(
-          ImportUserRow(
+          ImportGradeRow(
             rowNumber: i + 1,
-            fullName: fullName,
-            email: email,
-            role: role,
-            loginProvider: loginProvider,
-            password: password,
-            phoneNumber: phoneNumber,
-            address: address,
-            majorId: majorId,
-            department: department,
             studentCode: studentCode,
-            year: year,
-            className: className,
+            scoreProcess: scoreProcess,
+            scoreMid: scoreMid,
+            fullName: '',
+            studentId: '',
             errors: errors,
           ),
         );
       }
 
-      final checkResult = await _repo.checkImportUsers(
-        users: parsedRows.map((e) => e.toPayload()).toList(),
+      final checkResult = await _repo.checkImportGrades(
+        classId: widget.classId,
+        rows: parsedRows.map((e) => e.toPayload()).toList(),
       );
 
-      final checkMap = {
-        for (final item in checkResult)
-          (item['email'] ?? '').toString().toLowerCase(): item,
-      };
+      final serverRows = List<Map<String, dynamic>>.from(
+        ((checkResult['results'] ?? []) as List).map(
+          (e) => Map<String, dynamic>.from(e as Map),
+        ),
+      );
 
-      final checkedRows = parsedRows.map((row) {
-        final item = checkMap[row.email.toLowerCase()];
-        final serverErrors = item == null
-            ? <String>[]
-            : List<String>.from(item['errors'] ?? []);
-
-        return row.copyWith(errors: [...row.errors, ...serverErrors]);
+      final checkedRows = serverRows.map((item) {
+        return ImportGradeRow(
+          rowNumber: int.tryParse((item['rowNumber'] ?? '').toString()) ?? 0,
+          studentCode: (item['studentCode'] ?? '').toString(),
+          studentId: (item['studentId'] ?? '').toString(),
+          fullName: (item['fullName'] ?? '').toString(),
+          scoreProcess: double.tryParse(
+            (item['scoreProcess'] ?? '').toString(),
+          ),
+          scoreMid: double.tryParse((item['scoreMid'] ?? '').toString()),
+          errors: List<String>.from(item['errors'] ?? []),
+        );
       }).toList();
 
       setState(() {
@@ -178,14 +162,14 @@ class _AdminImportUsersScreenState extends State<AdminImportUsersScreen> {
     }
   }
 
-  List<Map<String, dynamic>> _validUsersPayload() {
+  List<Map<String, dynamic>> _validRowsPayload() {
     return _rows.where((r) => r.isValid).map((r) => r.toPayload()).toList();
   }
 
-  Future<void> _importUsers() async {
-    final validUsers = _validUsersPayload();
+  Future<void> _importGrades() async {
+    final validRows = _validRowsPayload();
 
-    if (validUsers.isEmpty) {
+    if (validRows.isEmpty) {
       _show('Không có dòng hợp lệ để import');
       return;
     }
@@ -196,7 +180,10 @@ class _AdminImportUsersScreenState extends State<AdminImportUsersScreen> {
     });
 
     try {
-      final result = await _repo.importUsers(users: validUsers);
+      final result = await _repo.importGrades(
+        classId: widget.classId,
+        rows: validRows,
+      );
 
       if (!mounted) return;
 
@@ -205,7 +192,7 @@ class _AdminImportUsersScreenState extends State<AdminImportUsersScreen> {
         _importing = false;
       });
 
-      _show('Import hoàn tất');
+      _show('Import điểm hoàn tất');
       Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) return;
@@ -230,7 +217,7 @@ class _AdminImportUsersScreenState extends State<AdminImportUsersScreen> {
         elevation: 0,
         iconTheme: const IconThemeData(color: _primary),
         title: const Text(
-          'Import người dùng từ Excel',
+          'Import điểm từ Excel',
           style: TextStyle(
             color: Color(0xFF0F172A),
             fontWeight: FontWeight.w900,
@@ -264,7 +251,7 @@ class _AdminImportUsersScreenState extends State<AdminImportUsersScreen> {
                         ),
                         const SizedBox(height: 8),
                         const Text(
-                          'fullName | email | role | loginProvider | password | phoneNumber | address | majorId | department | studentCode | year | className',
+                          'studentCode | scoreProcess | scoreMid',
                           style: TextStyle(
                             color: Color(0xFF64748B),
                             height: 1.4,
@@ -325,13 +312,11 @@ class _AdminImportUsersScreenState extends State<AdminImportUsersScreen> {
                 ],
               ),
             ),
-
             if (_result != null)
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
                 child: _ResultBox(result: _result!),
               ),
-
             Expanded(
               child: _rows.isEmpty
                   ? const Center(
@@ -348,12 +333,10 @@ class _AdminImportUsersScreenState extends State<AdminImportUsersScreen> {
                       itemCount: _rows.length,
                       separatorBuilder: (_, __) => const SizedBox(height: 10),
                       itemBuilder: (context, index) {
-                        final row = _rows[index];
-                        return _ImportRowCard(row: row);
+                        return _ImportRowCard(row: _rows[index]);
                       },
                     ),
             ),
-
             if (_rows.isNotEmpty)
               Container(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
@@ -367,7 +350,7 @@ class _AdminImportUsersScreenState extends State<AdminImportUsersScreen> {
                   child: FilledButton.icon(
                     onPressed: _importing || validCount == 0
                         ? null
-                        : _importUsers,
+                        : _importGrades,
                     style: FilledButton.styleFrom(
                       backgroundColor: _primary,
                       shape: RoundedRectangleBorder(
@@ -383,11 +366,11 @@ class _AdminImportUsersScreenState extends State<AdminImportUsersScreen> {
                               color: Colors.white,
                             ),
                           )
-                        : const Icon(Icons.group_add_rounded),
+                        : const Icon(Icons.save_alt_rounded),
                     label: Text(
                       _importing
                           ? 'Đang import...'
-                          : 'Import $validCount người dùng hợp lệ',
+                          : 'Import $validCount dòng hợp lệ',
                       style: const TextStyle(
                         fontWeight: FontWeight.w900,
                         fontSize: 15,
@@ -403,79 +386,33 @@ class _AdminImportUsersScreenState extends State<AdminImportUsersScreen> {
   }
 }
 
-class ImportUserRow {
+class ImportGradeRow {
   final int rowNumber;
-  final String fullName;
-  final String email;
-  final String role;
-  final String loginProvider;
-  final String password;
-  final String phoneNumber;
-  final String address;
-  final String majorId;
-  final String department;
   final String studentCode;
-  final int? year;
-  final String className;
+  final String studentId;
+  final String fullName;
+  final double? scoreProcess;
+  final double? scoreMid;
   final List<String> errors;
 
-  const ImportUserRow({
+  const ImportGradeRow({
     required this.rowNumber,
-    required this.fullName,
-    required this.email,
-    required this.role,
-    required this.loginProvider,
-    required this.password,
-    required this.phoneNumber,
-    required this.address,
-    required this.majorId,
-    required this.department,
     required this.studentCode,
-    required this.year,
-    required this.className,
+    required this.studentId,
+    required this.fullName,
+    required this.scoreProcess,
+    required this.scoreMid,
     required this.errors,
   });
 
   bool get isValid => errors.isEmpty;
 
-  ImportUserRow copyWith({List<String>? errors}) {
-    return ImportUserRow(
-      rowNumber: rowNumber,
-      fullName: fullName,
-      email: email,
-      role: role,
-      loginProvider: loginProvider,
-      password: password,
-      phoneNumber: phoneNumber,
-      address: address,
-      majorId: majorId,
-      department: department,
-      studentCode: studentCode,
-      year: year,
-      className: className,
-      errors: errors ?? this.errors,
-    );
-  }
-
   Map<String, dynamic> toPayload() {
     return {
-      'fullName': fullName,
-      'email': email,
-      'role': role,
-      'loginProvider': loginProvider,
-      if (password.isNotEmpty) 'password': password,
-      'phoneNumber': phoneNumber,
-      'address': address,
-      'majorId': majorId,
-      'department': department,
-      if (role == 'student')
-        'studentInfo': {
-          'studentCode': studentCode,
-          'year': year,
-          'className': className,
-          'majorId': majorId,
-        },
-      if (role == 'teacher') 'teacherInfo': {'majorId': majorId},
+      'rowNumber': rowNumber,
+      'studentCode': studentCode,
+      'scoreProcess': scoreProcess,
+      'scoreMid': scoreMid,
     };
   }
 }
@@ -525,7 +462,7 @@ class _SummaryCard extends StatelessWidget {
 }
 
 class _ImportRowCard extends StatelessWidget {
-  final ImportUserRow row;
+  final ImportGradeRow row;
 
   const _ImportRowCard({required this.row});
 
@@ -546,7 +483,7 @@ class _ImportRowCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Dòng ${row.rowNumber}: ${row.fullName}',
+            'Dòng ${row.rowNumber}: ${row.studentCode}',
             style: const TextStyle(
               fontWeight: FontWeight.w900,
               fontSize: 15,
@@ -555,10 +492,18 @@ class _ImportRowCard extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            '${row.email} • ${row.role} • ${row.loginProvider}',
+            row.fullName.isEmpty ? 'Chưa xác định sinh viên' : row.fullName,
             style: const TextStyle(
               color: Color(0xFF64748B),
               fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Chuyên cần: ${row.scoreProcess ?? '--'} • Giữa kỳ: ${row.scoreMid ?? '--'}',
+            style: const TextStyle(
+              color: Color(0xFF334155),
+              fontWeight: FontWeight.w700,
             ),
           ),
           if (row.errors.isNotEmpty) ...[
@@ -586,10 +531,9 @@ class _ResultBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final created = result['created'] ?? 0;
-    final pending = result['pending'] ?? 0;
+    final success = result['success'] ?? 0;
     final failed = result['failed'] ?? 0;
-    final duplicate = result['duplicate'] ?? 0;
+    final invalid = result['invalid'] ?? 0;
 
     return Container(
       width: double.infinity,
@@ -600,7 +544,7 @@ class _ResultBox extends StatelessWidget {
         border: Border.all(color: const Color(0xFFBFDBFE)),
       ),
       child: Text(
-        'Kết quả: tạo trực tiếp $created, chờ Google $pending, trùng email $duplicate, lỗi $failed',
+        'Kết quả: lưu thành công $success, lỗi $failed, không hợp lệ $invalid',
         style: const TextStyle(
           fontWeight: FontWeight.w900,
           color: Color(0xFF1E3A8A),

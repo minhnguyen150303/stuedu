@@ -20,5 +20,6 @@ router.use("/jobs", require("./jobs.routes"));
 router.use("/uploads", require("./uploads.routes"));
 router.use("/students", require("./students.routes"));
 router.use("/teachers", require("./teachers.routes"));
+router.use("/exam-schedules", require("./exam_schedules.routes"));
 
 module.exports = router;

@@ -50,7 +50,7 @@ class _MajorDetailScreenState extends State<MajorDetailScreen> {
 
   late final AdminAcademicRepository _repo;
 
-  int _tab = 1;
+  int _tab = 0;
   List<Map<String, dynamic>> _lastCycleMaps = [];
 
   @override
@@ -61,10 +61,6 @@ class _MajorDetailScreenState extends State<MajorDetailScreen> {
 
   Future<List<Map<String, dynamic>>> _loadSemesterCycles() {
     return _repo.getSemesterCycles(majorId: widget.major['id'].toString());
-  }
-
-  Future<List<Map<String, dynamic>>> _loadSemesterHistory() {
-    return _repo.getSemesterHistory(majorId: widget.major['id'].toString());
   }
 
   Map<String, dynamic>? _findCycleMap(String id) {
@@ -94,27 +90,136 @@ class _MajorDetailScreenState extends State<MajorDetailScreen> {
 
     final ok = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(nextActive ? 'Hiện lại học kỳ' : 'Ẩn học kỳ'),
-        content: Text(
-          nextActive
-              ? 'Học kỳ sẽ hiển thị lại trong danh sách hoạt động.'
-              : 'Học kỳ sẽ bị ẩn khỏi vận hành hiện tại, nhưng dữ liệu cũ vẫn được giữ lại để xem lịch sử.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Hủy'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: Text(
-              nextActive ? 'Hiện lại' : 'Ẩn',
-              style: TextStyle(color: nextActive ? Colors.blue : Colors.orange),
+      builder: (dialogContext) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(22, 24, 22, 18),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(28),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.12),
+                  blurRadius: 24,
+                  offset: const Offset(0, 12),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 72,
+                  height: 72,
+                  decoration: BoxDecoration(
+                    color: nextActive
+                        ? const Color(0xFFEFF6FF)
+                        : const Color(0xFFFFF4DB),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: nextActive
+                          ? const Color(0xFFBFDBFE)
+                          : const Color(0xFFFCD34D),
+                      width: 1.2,
+                    ),
+                  ),
+                  child: Icon(
+                    nextActive
+                        ? Icons.visibility_rounded
+                        : Icons.visibility_off_rounded,
+                    size: 34,
+                    color: nextActive
+                        ? const Color(0xFF2563EB)
+                        : const Color(0xFFB45309),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Text(
+                  nextActive ? 'Hiện lại học kỳ?' : 'Ẩn học kỳ?',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w900,
+                    color: Color(0xFF0F172A),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  nextActive
+                      ? 'Học kỳ sẽ hiển thị lại trong danh sách hoạt động.'
+                      : 'Học kỳ sẽ bị ẩn khỏi vận hành hiện tại, nhưng dữ liệu cũ vẫn được giữ lại.',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    height: 1.45,
+                    color: Color(0xFF64748B),
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Row(
+                  children: [
+                    Expanded(
+                      child: SizedBox(
+                        height: 48,
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.pop(dialogContext, false),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(0xFF334155),
+                            side: const BorderSide(
+                              color: Color(0xFFE2E8F0),
+                              width: 1.2,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            backgroundColor: const Color(0xFFF8FAFC),
+                          ),
+                          child: const Text(
+                            'Hủy',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: SizedBox(
+                        height: 48,
+                        child: FilledButton(
+                          onPressed: () => Navigator.pop(dialogContext, true),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: nextActive
+                                ? const Color(0xFF2563EB)
+                                : const Color(0xFFB45309),
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                          ),
+                          child: Text(
+                            nextActive ? 'Hiện lại' : 'Ẩn',
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
-        ],
-      ),
+        );
+      },
     );
 
     if (ok != true) return;
@@ -253,16 +358,37 @@ class _MajorDetailScreenState extends State<MajorDetailScreen> {
                           ),
                         ),
                         const SizedBox(height: 24),
-                        Text(
-                          isEdit ? 'Sửa học kỳ' : 'Thêm học kỳ',
-                          style: const TextStyle(
-                            fontSize: 26,
-                            fontWeight: FontWeight.w900,
-                            color: Color(0xFF1B2A8A),
-                          ),
+                        Row(
+                          children: [
+                            Container(
+                              width: 52,
+                              height: 52,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFEDEFF6),
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: Icon(
+                                isEdit
+                                    ? Icons.edit_calendar_rounded
+                                    : Icons.add_circle_rounded,
+                                color: _primary,
+                                size: 28,
+                              ),
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Text(
+                                isEdit ? 'Sửa học kỳ' : 'Thêm học kỳ',
+                                style: const TextStyle(
+                                  fontSize: 25,
+                                  fontWeight: FontWeight.w900,
+                                  color: Color(0xFF0F172A),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                         const SizedBox(height: 24),
-
                         const _SemesterFieldLabel('Năm đào tạo'),
                         const SizedBox(height: 10),
                         _SemesterDropdownField<int>(
@@ -279,9 +405,7 @@ class _MajorDetailScreenState extends State<MajorDetailScreen> {
                             setInnerState(() => selectedYearNumber = value);
                           },
                         ),
-
                         const SizedBox(height: 22),
-
                         const _SemesterFieldLabel('Học kỳ'),
                         const SizedBox(height: 10),
                         _SemesterDropdownField<int>(
@@ -296,9 +420,7 @@ class _MajorDetailScreenState extends State<MajorDetailScreen> {
                             }
                           },
                         ),
-
                         const SizedBox(height: 22),
-
                         Row(
                           children: [
                             Expanded(
@@ -362,9 +484,7 @@ class _MajorDetailScreenState extends State<MajorDetailScreen> {
                             ),
                           ],
                         ),
-
                         const SizedBox(height: 22),
-
                         Row(
                           children: [
                             Expanded(
@@ -428,9 +548,7 @@ class _MajorDetailScreenState extends State<MajorDetailScreen> {
                             ),
                           ],
                         ),
-
                         const SizedBox(height: 32),
-
                         Row(
                           children: [
                             Expanded(
@@ -438,8 +556,9 @@ class _MajorDetailScreenState extends State<MajorDetailScreen> {
                                 onPressed: () =>
                                     Navigator.pop(sheetContext, false),
                                 style: OutlinedButton.styleFrom(
-                                  minimumSize: const Size.fromHeight(58),
+                                  minimumSize: const Size.fromHeight(56),
                                   backgroundColor: const Color(0xFFF1F5F9),
+                                  foregroundColor: const Color(0xFF334155),
                                   side: BorderSide.none,
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(18),
@@ -448,9 +567,8 @@ class _MajorDetailScreenState extends State<MajorDetailScreen> {
                                 child: const Text(
                                   'Hủy',
                                   style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w800,
-                                    color: Color(0xFF334155),
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w900,
                                   ),
                                 ),
                               ),
@@ -482,10 +600,9 @@ class _MajorDetailScreenState extends State<MajorDetailScreen> {
                                   Navigator.pop(sheetContext, true);
                                 },
                                 style: FilledButton.styleFrom(
-                                  backgroundColor: const Color(0xFF232C97),
-                                  minimumSize: const Size.fromHeight(58),
-                                  elevation: 6,
-                                  shadowColor: const Color(0x33000000),
+                                  backgroundColor: _primary,
+                                  minimumSize: const Size.fromHeight(56),
+                                  elevation: 0,
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(18),
                                   ),
@@ -493,8 +610,8 @@ class _MajorDetailScreenState extends State<MajorDetailScreen> {
                                 child: Text(
                                   isEdit ? 'Lưu' : 'Tạo',
                                   style: const TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w800,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w900,
                                     color: Colors.white,
                                   ),
                                 ),
@@ -570,70 +687,91 @@ class _MajorDetailScreenState extends State<MajorDetailScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            Container(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+              decoration: const BoxDecoration(color: Color(0xFFF5F7FB)),
               child: Column(
                 children: [
                   Row(
                     children: [
-                      IconButton(
-                        onPressed: () => Navigator.pop(context),
-                        icon: const Icon(Icons.arrow_back_rounded, size: 30),
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(14),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.05),
+                              blurRadius: 12,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: IconButton(
+                          onPressed: () => Navigator.pop(context),
+                          icon: const Icon(
+                            Icons.arrow_back_rounded,
+                            color: Color(0xFF0F172A),
+                          ),
+                        ),
                       ),
+                      const SizedBox(width: 12),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             const Text(
-                              'Học kỳ của Chuyên ngành',
+                              'Quản lý học kỳ',
                               style: TextStyle(
                                 fontSize: 22,
                                 fontWeight: FontWeight.w900,
+                                color: Color(0xFF0F172A),
                               ),
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              '$majorName  ›  Học kỳ',
+                              majorName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
                                 color: Color(0xFF64748B),
-                                fontSize: 15,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
                           ],
                         ),
                       ),
-                      IconButton(
-                        onPressed: () {},
-                        icon: const Icon(Icons.more_vert_rounded),
-                      ),
                     ],
                   ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      _TopTab(
-                        label: 'Lịch sử',
-                        selected: _tab == 0,
-                        onTap: () => setState(() => _tab = 0),
-                      ),
-                      _TopTab(
-                        label: 'Danh sách Học\nkỳ',
-                        selected: _tab == 1,
-                        onTap: () => setState(() => _tab = 1),
-                      ),
-                      _TopTab(
-                        label: 'Giảng\nviên',
-                        selected: _tab == 2,
-                        onTap: () => setState(() => _tab = 2),
-                      ),
-                    ],
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(5),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEFF2F7),
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: Row(
+                      children: [
+                        _TopTab(
+                          label: 'Danh sách học kỳ',
+                          selected: _tab == 0,
+                          onTap: () => setState(() => _tab = 0),
+                        ),
+                        _TopTab(
+                          label: 'Giảng viên',
+                          selected: _tab == 1,
+                          onTap: () => setState(() => _tab = 1),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
             ),
-            const Divider(height: 1),
             Expanded(
-              child: _tab == 1
+              child: _tab == 0
                   ? FutureBuilder<List<Map<String, dynamic>>>(
                       future: _loadSemesterCycles(),
                       builder: (context, snapshot) {
@@ -654,36 +792,92 @@ class _MajorDetailScreenState extends State<MajorDetailScreen> {
                         );
 
                         return ListView(
-                          padding: const EdgeInsets.fromLTRB(16, 18, 16, 20),
+                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
                           children: [
                             Row(
                               children: [
                                 const Expanded(
-                                  child: Text(
-                                    'Các học kỳ đang mở',
-                                    style: TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.w900,
-                                    ),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Danh sách học kỳ',
+                                        style: TextStyle(
+                                          fontSize: 19,
+                                          fontWeight: FontWeight.w900,
+                                          color: Color(0xFF0F172A),
+                                        ),
+                                      ),
+                                      SizedBox(height: 4),
+                                      Text(
+                                        'Quản lý các học kỳ đang vận hành',
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          color: Color(0xFF64748B),
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                                FilledButton.icon(
-                                  onPressed: () => _showSemesterCycleForm(),
-                                  style: FilledButton.styleFrom(
-                                    backgroundColor: const Color(0xFFEDEBFF),
-                                    foregroundColor: _primary,
+                                SizedBox(
+                                  height: 44,
+                                  child: FilledButton.icon(
+                                    onPressed: () => _showSemesterCycleForm(),
+                                    style: FilledButton.styleFrom(
+                                      backgroundColor: _primary,
+                                      foregroundColor: Colors.white,
+                                      elevation: 0,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 14,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(14),
+                                      ),
+                                    ),
+                                    icon: const Icon(
+                                      Icons.add_rounded,
+                                      size: 20,
+                                    ),
+                                    label: const Text(
+                                      'Thêm',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
                                   ),
-                                  icon: const Icon(Icons.add),
-                                  label: const Text('Thêm học kỳ'),
                                 ),
                               ],
                             ),
                             const SizedBox(height: 16),
                             if (semesters.isEmpty)
-                              const Center(
-                                child: Padding(
-                                  padding: EdgeInsets.only(top: 40),
-                                  child: Text('Chưa có học kỳ nào'),
+                              Container(
+                                margin: const EdgeInsets.only(top: 32),
+                                padding: const EdgeInsets.all(22),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(22),
+                                  border: Border.all(
+                                    color: const Color(0xFFE2E8F0),
+                                  ),
+                                ),
+                                child: const Column(
+                                  children: [
+                                    Icon(
+                                      Icons.calendar_month_rounded,
+                                      size: 42,
+                                      color: Color(0xFF94A3B8),
+                                    ),
+                                    SizedBox(height: 12),
+                                    Text(
+                                      'Chưa có học kỳ nào',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w800,
+                                        color: Color(0xFF64748B),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ...semesters.map((s) {
@@ -710,40 +904,6 @@ class _MajorDetailScreenState extends State<MajorDetailScreen> {
                               );
                             }),
                           ],
-                        );
-                      },
-                    )
-                  : _tab == 0
-                  ? FutureBuilder<List<Map<String, dynamic>>>(
-                      future: _loadSemesterHistory(),
-                      builder: (context, snapshot) {
-                        if (snapshot.connectionState ==
-                            ConnectionState.waiting) {
-                          return const Center(
-                            child: CircularProgressIndicator(),
-                          );
-                        }
-
-                        if (snapshot.hasError) {
-                          return Center(child: Text('Lỗi: ${snapshot.error}'));
-                        }
-
-                        final items = snapshot.data ?? [];
-
-                        if (items.isEmpty) {
-                          return const Center(
-                            child: Text('Chưa có lịch sử học kỳ'),
-                          );
-                        }
-
-                        return ListView(
-                          padding: const EdgeInsets.fromLTRB(16, 18, 16, 20),
-                          children: items.map((s) {
-                            return Padding(
-                              padding: const EdgeInsets.only(bottom: 14),
-                              child: _SemesterHistoryCard(semester: s),
-                            );
-                          }).toList(),
                         );
                       },
                     )
@@ -804,10 +964,17 @@ class _MajorDetailScreenState extends State<MajorDetailScreen> {
                               padding: const EdgeInsets.all(16),
                               decoration: BoxDecoration(
                                 color: Colors.white,
-                                borderRadius: BorderRadius.circular(20),
+                                borderRadius: BorderRadius.circular(22),
                                 border: Border.all(
-                                  color: const Color(0xFFDCE2EE),
+                                  color: const Color(0xFFE2E8F0),
                                 ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.04),
+                                    blurRadius: 18,
+                                    offset: const Offset(0, 8),
+                                  ),
+                                ],
                               ),
                               child: Row(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -915,22 +1082,29 @@ class _TopTab extends StatelessWidget {
     return Expanded(
       child: InkWell(
         onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.only(bottom: 12, top: 6),
+        borderRadius: BorderRadius.circular(14),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(vertical: 12),
           decoration: BoxDecoration(
-            border: Border(
-              bottom: BorderSide(
-                color: selected ? _primary : Colors.transparent,
-                width: 3,
-              ),
-            ),
+            color: selected ? Colors.white : Colors.transparent,
+            borderRadius: BorderRadius.circular(14),
+            boxShadow: selected
+                ? [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.06),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ]
+                : [],
           ),
           child: Text(
             label,
             textAlign: TextAlign.center,
             style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
+              fontSize: 14,
+              fontWeight: FontWeight.w900,
               color: selected ? _primary : const Color(0xFF64748B),
             ),
           ),
@@ -1007,20 +1181,27 @@ class _SemesterCard extends StatelessWidget {
 
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(22),
+      borderRadius: BorderRadius.circular(24),
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: const Color(0xFFDCE2EE)),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: const Color(0xFFE2E8F0)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 18,
+              offset: const Offset(0, 8),
+            ),
+          ],
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
-              width: 68,
-              height: 68,
+              width: 62,
+              height: 62,
               decoration: BoxDecoration(
                 color: const Color(0xFFEDEFF6),
                 borderRadius: BorderRadius.circular(18),
@@ -1028,20 +1209,32 @@ class _SemesterCard extends StatelessWidget {
               child: const Icon(
                 Icons.calendar_month_rounded,
                 color: _primary,
-                size: 32,
+                size: 30,
               ),
             ),
-            const SizedBox(width: 16),
+            const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    name,
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w900,
-                    ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          name,
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                            color: Color(0xFF0F172A),
+                          ),
+                        ),
+                      ),
+                      const Icon(
+                        Icons.chevron_right_rounded,
+                        size: 28,
+                        color: Color(0xFF94A3B8),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 4),
                   Text(
@@ -1053,71 +1246,78 @@ class _SemesterCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 10),
-                  Text(
-                    'Đăng ký: $registrationOpenAt - $registrationCloseAt',
-                    style: const TextStyle(
-                      fontSize: 14,
-                      color: Color(0xFF64748B),
-                    ),
+                  _SemesterInfoLine(
+                    icon: Icons.app_registration_rounded,
+                    text: 'Đăng ký: $registrationOpenAt - $registrationCloseAt',
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Học: $studyStartAt - $studyEndAt',
-                    style: const TextStyle(
-                      fontSize: 14,
-                      color: Color(0xFF64748B),
-                    ),
+                  const SizedBox(height: 6),
+                  _SemesterInfoLine(
+                    icon: Icons.school_rounded,
+                    text: 'Học: $studyStartAt - $studyEndAt',
                   ),
-                  const SizedBox(height: 10),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
+                  const SizedBox(height: 12),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: !isActive
+                            ? const Color(0xFFFFF4DB)
+                            : _statusBg(status),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        !isActive ? 'Đã ẩn' : semesterStatusLabel(status),
+                        style: TextStyle(
                           color: !isActive
-                              ? const Color(0xFFFFF4DB)
-                              : _statusBg(status),
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: Text(
-                          !isActive ? 'Đã ẩn' : semesterStatusLabel(status),
-                          style: TextStyle(
-                            color: !isActive
-                                ? const Color(0xFFB45309)
-                                : _statusColor(status),
-                            fontWeight: FontWeight.w800,
-                          ),
+                              ? const Color(0xFFB45309)
+                              : _statusColor(status),
+                          fontWeight: FontWeight.w900,
+                          fontSize: 12.5,
                         ),
                       ),
-                      const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          OutlinedButton(
-                            onPressed: onEdit,
-                            child: const Text('Sửa'),
-                          ),
-                          const SizedBox(width: 10),
-                          OutlinedButton(
-                            onPressed: onToggleVisibility,
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: isActive
-                                  ? Colors.orange
-                                  : Colors.blue,
-                            ),
-                            child: Text(isActive ? 'Ẩn' : 'Hiện lại'),
-                          ),
-                        ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _SemesterActionButton(
+                          icon: Icons.edit_rounded,
+                          text: 'Sửa',
+                          foregroundColor: const Color(0xFF2563EB),
+                          backgroundColor: const Color(0xFFEFF6FF),
+                          borderColor: const Color(0xFFBFDBFE),
+                          onPressed: onEdit,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _SemesterActionButton(
+                          icon: isActive
+                              ? Icons.visibility_off_rounded
+                              : Icons.visibility_rounded,
+                          text: isActive ? 'Ẩn' : 'Hiện lại',
+                          foregroundColor: isActive
+                              ? const Color(0xFFB45309)
+                              : const Color(0xFF2563EB),
+                          backgroundColor: isActive
+                              ? const Color(0xFFFFF4DB)
+                              : const Color(0xFFEFF6FF),
+                          borderColor: isActive
+                              ? const Color(0xFFFCD34D)
+                              : const Color(0xFFBFDBFE),
+                          onPressed: onToggleVisibility,
+                        ),
                       ),
                     ],
                   ),
                 ],
               ),
             ),
-            const Icon(Icons.chevron_right_rounded, size: 34),
           ],
         ),
       ),
@@ -1125,105 +1325,84 @@ class _SemesterCard extends StatelessWidget {
   }
 }
 
-class _SemesterHistoryCard extends StatelessWidget {
-  final Map<String, dynamic> semester;
+class _SemesterInfoLine extends StatelessWidget {
+  final IconData icon;
+  final String text;
 
-  const _SemesterHistoryCard({required this.semester});
-
-  static const _primary = Color(0xFF1B2A8A);
+  const _SemesterInfoLine({required this.icon, required this.text});
 
   @override
   Widget build(BuildContext context) {
-    final name = (semester['name'] ?? '').toString();
-    final academicYear = (semester['academicYear'] ?? '').toString();
-
-    final registrationOpenAt = formatDateVN(
-      semester['registrationOpenAt']?.toString(),
-    );
-    final registrationCloseAt = formatDateVN(
-      semester['registrationCloseAt']?.toString(),
-    );
-    final studyStartAt = formatDateVN(semester['studyStartAt']?.toString());
-    final studyEndAt = formatDateVN(semester['studyEndAt']?.toString());
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: const Color(0xFFDCE2EE)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 68,
-            height: 68,
-            decoration: BoxDecoration(
-              color: const Color(0xFFEDEFF6),
-              borderRadius: BorderRadius.circular(18),
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: const Color(0xFF94A3B8)),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            text,
+            style: const TextStyle(
+              fontSize: 13.5,
+              color: Color(0xFF64748B),
+              fontWeight: FontWeight.w500,
             ),
-            child: const Icon(Icons.history_rounded, color: _primary, size: 32),
           ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  name,
-                  style: const TextStyle(
-                    fontSize: 18,
+        ),
+      ],
+    );
+  }
+}
+
+class _SemesterActionButton extends StatelessWidget {
+  final IconData icon;
+  final String text;
+  final Color foregroundColor;
+  final Color backgroundColor;
+  final Color borderColor;
+  final VoidCallback onPressed;
+
+  const _SemesterActionButton({
+    required this.icon,
+    required this.text,
+    required this.foregroundColor,
+    required this.backgroundColor,
+    required this.borderColor,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: backgroundColor,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          height: 42,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: borderColor),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 17, color: foregroundColor),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  text,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: foregroundColor,
+                    fontSize: 13,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  'Năm học $academicYear',
-                  style: const TextStyle(
-                    fontSize: 14,
-                    color: Color(0xFF64748B),
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  'Đăng ký: $registrationOpenAt - $registrationCloseAt',
-                  style: const TextStyle(
-                    fontSize: 14,
-                    color: Color(0xFF64748B),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Học: $studyStartAt - $studyEndAt',
-                  style: const TextStyle(
-                    fontSize: 14,
-                    color: Color(0xFF64748B),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF1F5F9),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: const Text(
-                    'Đã kết thúc',
-                    style: TextStyle(
-                      color: Color(0xFF64748B),
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }

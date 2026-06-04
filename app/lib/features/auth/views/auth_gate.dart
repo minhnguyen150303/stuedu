@@ -8,6 +8,7 @@ import '../../../data/sources/remote/api_client.dart';
 import '../../admin/views/admin_home_screen.dart';
 import '../../student/views/student_home_screen.dart';
 import '../../teacher/views/teacher_home_screen.dart';
+import '../../qlsv/views/qlsv_home_screen.dart';
 import 'welcome_screen.dart';
 import '../../../core/services/push_notification_service.dart';
 
@@ -47,6 +48,9 @@ class _AuthGateState extends State<AuthGate> {
       }
       if (role == 'teacher') {
         return TeacherHomeScreen(profile: profile);
+      }
+      if (role == 'qlsv') {
+        return QlsvHomeScreen(profile: profile);
       }
       return StudentHomeScreen(profile: profile);
     } catch (_) {

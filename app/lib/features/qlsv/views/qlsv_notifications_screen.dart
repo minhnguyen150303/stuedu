@@ -1,28 +1,27 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/config/app_config.dart';
-import '../../../data/repositories/student_repository.dart';
+import '../../../data/repositories/qlsv_repository.dart';
 import '../../../data/sources/remote/api_client.dart';
 
-class StudentNotificationsScreen extends StatefulWidget {
+class QlsvNotificationsScreen extends StatefulWidget {
   final Map<String, dynamic> profile;
 
-  const StudentNotificationsScreen({super.key, required this.profile});
+  const QlsvNotificationsScreen({super.key, required this.profile});
 
   @override
-  State<StudentNotificationsScreen> createState() =>
-      _StudentNotificationsScreenState();
+  State<QlsvNotificationsScreen> createState() =>
+      _QlsvNotificationsScreenState();
 }
 
-class _StudentNotificationsScreenState
-    extends State<StudentNotificationsScreen> {
+class _QlsvNotificationsScreenState extends State<QlsvNotificationsScreen> {
   static const _primary = Color(0xFF1B2A8A);
   static const _bg = Color(0xFFF5F7FB);
   static const _textDark = Color(0xFF0F172A);
   static const _textMuted = Color(0xFF64748B);
   static const _danger = Color(0xFFEF4444);
 
-  late final StudentRepository _repo;
+  late final QlsvRepository _repo;
 
   bool _loading = true;
   String? _error;
@@ -34,7 +33,7 @@ class _StudentNotificationsScreenState
   @override
   void initState() {
     super.initState();
-    _repo = StudentRepository(ApiClient(AppConfig.baseUrl));
+    _repo = QlsvRepository(ApiClient(AppConfig.baseUrl));
     _load();
   }
 

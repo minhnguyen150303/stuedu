@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-
+import 'package:intl/intl.dart';
 import '../../../core/config/app_config.dart';
 import '../../../data/repositories/student_repository.dart';
 import '../../../data/sources/remote/api_client.dart';
@@ -132,6 +132,7 @@ class _StudentScheduleScreenState extends State<StudentScheduleScreen>
               date: DateTime(_visibleMonth.year, _visibleMonth.month, 1),
               isCurrentMonth: true,
               lessons: const [],
+              exams: const [],
             ),
           );
           selected = DateTime(
@@ -190,7 +191,7 @@ class _StudentScheduleScreenState extends State<StudentScheduleScreen>
         foregroundColor: Colors.black,
         centerTitle: true,
         title: const Text(
-          'Lịch học',
+          'Thời khóa biểu',
           style: TextStyle(fontWeight: FontWeight.w800),
         ),
         bottom: TabBar(
@@ -228,7 +229,7 @@ class _StudentScheduleScreenState extends State<StudentScheduleScreen>
 
     if (days.isEmpty) {
       return _ScheduleErrorView(
-        message: 'Không có dữ liệu lịch học',
+        message: 'Không có dữ liệu thời khóa biểu',
         onRetry: _loadWeek,
       );
     }
@@ -279,7 +280,7 @@ class _StudentScheduleScreenState extends State<StudentScheduleScreen>
           ),
           const SizedBox(height: 22),
           const Text(
-            'Lịch học',
+            'Thời khóa biểu',
             style: TextStyle(
               fontSize: 24,
               fontWeight: FontWeight.w800,
@@ -288,7 +289,9 @@ class _StudentScheduleScreenState extends State<StudentScheduleScreen>
           ),
           const SizedBox(height: 14),
           if (lessons.isEmpty)
-            const _EmptyScheduleCard(message: 'Ngày này không có lịch học')
+            const _EmptyScheduleCard(
+              message: 'Ngày này không có thời khóa biểu',
+            )
           else
             ...lessons.map((lesson) {
               return Padding(
@@ -326,6 +329,7 @@ class _StudentScheduleScreenState extends State<StudentScheduleScreen>
         DateTime(_visibleMonth.year, _visibleMonth.month, 1);
 
     final selectedLessons = _lessonsOfSelectedDate(cells, selectedDate);
+    final selectedExams = _examsOfSelectedDate(cells, selectedDate);
 
     return RefreshIndicator(
       onRefresh: () => _loadMonth(month: _visibleMonth),
@@ -386,7 +390,9 @@ class _StudentScheduleScreenState extends State<StudentScheduleScreen>
           ),
           const SizedBox(height: 12),
           if (selectedLessons.isEmpty)
-            const _EmptyScheduleCard(message: 'Ngày này không có lịch học')
+            const _EmptyScheduleCard(
+              message: 'Ngày này không có thời khóa biểu',
+            )
           else
             ...selectedLessons.map((lesson) {
               return Padding(
@@ -403,6 +409,105 @@ class _StudentScheduleScreenState extends State<StudentScheduleScreen>
                 ),
               );
             }),
+          if (selectedExams.isNotEmpty) ...[
+            const SizedBox(height: 20),
+
+            const Text(
+              'Lịch thi',
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w900,
+                color: Color(0xFFE53935),
+              ),
+            ),
+
+            const SizedBox(height: 14),
+
+            ...selectedExams.map((exam) {
+              final room = (exam['examRoom'] ?? '').toString();
+              final note = (exam['note'] ?? '').toString();
+
+              DateTime? examDate;
+
+              try {
+                examDate = DateTime.parse(
+                  (exam['examDate'] ?? '').toString(),
+                ).toLocal();
+              } catch (_) {}
+
+              final hourText = examDate == null
+                  ? '--:--'
+                  : DateFormat('HH:mm').format(examDate);
+
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF1F2),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: const Color(0xFFFCA5A5)),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 56,
+                        alignment: Alignment.center,
+                        child: Text(
+                          hourText,
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w900,
+                            color: Color(0xFFE53935),
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(width: 14),
+
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '${exam['courseCode'] ?? ''} - ${exam['courseName'] ?? ''}',
+                              style: const TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+
+                            const SizedBox(height: 6),
+
+                            Text(
+                              room.isEmpty
+                                  ? 'Chưa có phòng thi'
+                                  : 'Phòng thi: $room',
+                              style: const TextStyle(
+                                color: Color(0xFF64748B),
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+
+                            if (note.isNotEmpty) ...[
+                              const SizedBox(height: 4),
+
+                              Text(
+                                note,
+                                style: const TextStyle(
+                                  color: Color(0xFF64748B),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }),
+          ],
         ],
       ),
     );
@@ -420,6 +525,23 @@ class _StudentScheduleScreenState extends State<StudentScheduleScreen>
         return cell.lessons;
       }
     }
+    return const [];
+  }
+
+  List<Map<String, dynamic>> _examsOfSelectedDate(
+    List<_MonthCellData> cells,
+    DateTime selectedDate,
+  ) {
+    for (final cell in cells) {
+      final d = cell.date;
+
+      if (d.year == selectedDate.year &&
+          d.month == selectedDate.month &&
+          d.day == selectedDate.day) {
+        return cell.exams;
+      }
+    }
+
     return const [];
   }
 
@@ -612,7 +734,8 @@ class _StudentScheduleScreenState extends State<StudentScheduleScreen>
     Map<String, dynamic>? raw,
     DateTime visibleMonth,
   ) {
-    final normalized = <String, List<Map<String, dynamic>>>{};
+    final normalizedLessons = <String, List<Map<String, dynamic>>>{};
+    final normalizedExams = <String, List<Map<String, dynamic>>>{};
 
     final dynamic daysRaw = raw?['days'] ?? raw?['dates'] ?? raw?['items'];
 
@@ -629,7 +752,16 @@ class _StudentScheduleScreenState extends State<StudentScheduleScreen>
         );
 
         if (dateStr.isNotEmpty) {
-          normalized[_dateKey(DateTime.tryParse(dateStr)?.toLocal())] = lessons;
+          final exams = List<Map<String, dynamic>>.from(
+            ((item['exams'] as List?) ?? const []).map(
+              (e) => Map<String, dynamic>.from(e as Map),
+            ),
+          );
+
+          final key = _dateKey(DateTime.tryParse(dateStr)?.toLocal());
+
+          normalizedLessons[key] = lessons;
+          normalizedExams[key] = exams;
         }
       }
     }
@@ -646,8 +778,8 @@ class _StudentScheduleScreenState extends State<StudentScheduleScreen>
         )?.toLocal();
         if (date == null) continue;
         final key = _dateKey(date);
-        normalized.putIfAbsent(key, () => []);
-        normalized[key]!.add(lesson);
+        normalizedLessons.putIfAbsent(key, () => []);
+        normalizedLessons[key]!.add(lesson);
       }
     }
 
@@ -670,7 +802,8 @@ class _StudentScheduleScreenState extends State<StudentScheduleScreen>
         _MonthCellData(
           date: date,
           isCurrentMonth: date.month == visibleMonth.month,
-          lessons: normalized[_dateKey(date)] ?? const [],
+          lessons: normalizedLessons[_dateKey(date)] ?? const [],
+          exams: normalizedExams[_dateKey(date)] ?? const [],
         ),
       );
     }
@@ -1096,15 +1229,38 @@ class _MonthGrid extends StatelessWidget {
                               ),
                             ),
                           ),
+
                           const SizedBox(height: 4),
-                          Container(
-                            width: 6,
+
+                          SizedBox(
                             height: 6,
-                            decoration: BoxDecoration(
-                              color: cell.lessons.isNotEmpty
-                                  ? const Color(0xFF64A8FF)
-                                  : Colors.transparent,
-                              shape: BoxShape.circle,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                if (cell.lessons.isNotEmpty)
+                                  Container(
+                                    width: 6,
+                                    height: 6,
+                                    decoration: const BoxDecoration(
+                                      color: Color(0xFF64A8FF),
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+
+                                if (cell.lessons.isNotEmpty &&
+                                    cell.exams.isNotEmpty)
+                                  const SizedBox(width: 4),
+
+                                if (cell.exams.isNotEmpty)
+                                  Container(
+                                    width: 6,
+                                    height: 6,
+                                    decoration: const BoxDecoration(
+                                      color: Color(0xFFE53935),
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                              ],
                             ),
                           ),
                         ],
@@ -1306,7 +1462,7 @@ class _ScheduleErrorView extends StatelessWidget {
         ),
         const SizedBox(height: 16),
         const Text(
-          'Không tải được lịch học',
+          'Không tải được thời khóa biểu!',
           textAlign: TextAlign.center,
           style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
         ),
@@ -1331,11 +1487,14 @@ class _ScheduleErrorView extends StatelessWidget {
 class _MonthCellData {
   final DateTime date;
   final bool isCurrentMonth;
+
   final List<Map<String, dynamic>> lessons;
+  final List<Map<String, dynamic>> exams;
 
   const _MonthCellData({
     required this.date,
     required this.isCurrentMonth,
     required this.lessons,
+    required this.exams,
   });
 }

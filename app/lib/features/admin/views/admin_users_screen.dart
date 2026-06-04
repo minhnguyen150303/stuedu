@@ -783,10 +783,16 @@ class _UserItem {
     switch (role) {
       case 'student':
         return 'Sinh viên';
+
       case 'teacher':
         return 'Giảng viên';
+
+      case 'qlsv':
+        return 'QLSV';
+
       case 'admin':
         return 'Quản trị';
+
       default:
         return 'Không rõ';
     }

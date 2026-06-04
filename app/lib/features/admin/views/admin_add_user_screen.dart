@@ -366,6 +366,10 @@ class _AdminAddUserScreenState extends State<AdminAddUserScreen> {
                             child: Text('Giảng viên'),
                           ),
                           DropdownMenuItem(
+                            value: 'qlsv',
+                            child: Text('QLSV - Quản lý sinh viên'),
+                          ),
+                          DropdownMenuItem(
                             value: 'admin',
                             child: Text('Quản trị viên'),
                           ),

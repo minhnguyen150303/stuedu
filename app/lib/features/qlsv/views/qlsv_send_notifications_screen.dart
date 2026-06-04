@@ -1,21 +1,21 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/config/app_config.dart';
-import '../../../data/repositories/admin_repository.dart';
+import '../../../data/repositories/qlsv_repository.dart';
 import '../../../data/sources/remote/api_client.dart';
 
-class AdminSendNotificationsScreen extends StatefulWidget {
+class QlsvSendNotificationsScreen extends StatefulWidget {
   final Map<String, dynamic> profile;
 
-  const AdminSendNotificationsScreen({super.key, required this.profile});
+  const QlsvSendNotificationsScreen({super.key, required this.profile});
 
   @override
-  State<AdminSendNotificationsScreen> createState() =>
-      _AdminSendNotificationsScreenState();
+  State<QlsvSendNotificationsScreen> createState() =>
+      _QlsvSendNotificationsScreenState();
 }
 
-class _AdminSendNotificationsScreenState
-    extends State<AdminSendNotificationsScreen> {
+class _QlsvSendNotificationsScreenState
+    extends State<QlsvSendNotificationsScreen> {
   static const _primary = Color(0xFF1B2A8A);
   static const _bg = Color(0xFFF5F7FB);
   static const _textDark = Color(0xFF0F172A);
@@ -23,7 +23,7 @@ class _AdminSendNotificationsScreenState
   static const _danger = Color(0xFFEF4444);
   static const _success = Color(0xFF16A34A);
 
-  late final AdminRepository _repo;
+  late final QlsvRepository _repo;
 
   final _titleCtrl = TextEditingController();
   final _bodyCtrl = TextEditingController();
@@ -39,7 +39,7 @@ class _AdminSendNotificationsScreenState
   @override
   void initState() {
     super.initState();
-    _repo = AdminRepository(ApiClient(AppConfig.baseUrl));
+    _repo = QlsvRepository(ApiClient(AppConfig.baseUrl));
     _loadCampaigns();
   }
 
@@ -120,7 +120,7 @@ class _AdminSendNotificationsScreenState
             _editingId == null
                 ? (createdCount != null
                       ? 'Đã gửi thông báo tới $createdCount người dùng'
-                      : 'Đã tạo thông báo')
+                      : 'Đã gửi thông báo')
                 : (updatedCount != null
                       ? 'Đã cập nhật và đồng bộ $updatedCount thông báo'
                       : 'Đã cập nhật thông báo'),

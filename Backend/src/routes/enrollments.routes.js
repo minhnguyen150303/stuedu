@@ -13,7 +13,7 @@ router.get(
 router.get(
     "/class/:classId/users",
     requireAuth,
-    requireRole(["teacher", "admin", "student"]),
+    requireRole(["teacher", "admin", "student", "qlsv"]),
     asyncHandler(controller.listUsersByClass)
 );
 

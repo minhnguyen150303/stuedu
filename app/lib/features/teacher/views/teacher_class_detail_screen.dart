@@ -20,6 +20,7 @@ import 'teacher_classes_screen.dart';
 import 'teacher_home_screen.dart';
 import 'teacher_schedule_screen.dart';
 import 'teacher_settings_screen.dart';
+import 'teacher_import_grades_screen.dart';
 
 class TeacherClassDetailScreen extends StatefulWidget {
   final Map<String, dynamic> profile;
@@ -2938,156 +2939,207 @@ class _TeacherClassDetailScreenState extends State<TeacherClassDetailScreen>
       return const Center(child: Text('Chưa có sinh viên'));
     }
 
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: _students.length,
-      itemBuilder: (context, index) {
-        final item = _students[index];
-        final user = Map<String, dynamic>.from((item['user'] ?? {}) as Map);
-        final studentId = (item['studentId'] ?? user['uid'] ?? '').toString();
-        final fullName = (user['fullName'] ?? 'Chưa rõ tên').toString();
-        final avatarUrl = (user['avatarUrl'] ?? '').toString();
-        final studentCode =
-            (user['studentInfo']?['studentCode'] ?? user['uid'] ?? '')
-                .toString();
-
-        final grade = _findGradeByStudent(studentId);
-
-        final processController = TextEditingController(
-          text: (grade?['scoreProcess'] ?? '').toString(),
-        );
-        final midController = TextEditingController(
-          text: (grade?['scoreMid'] ?? '').toString(),
-        );
-        final finalController = TextEditingController(
-          text: (grade?['scoreFinal'] ?? '').toString(),
-        );
-
-        final status = (grade?['status'] ?? 'Chưa chấm').toString();
-        final totalTen = (grade?['totalTen'] ?? '--').toString();
-
-        return Container(
-          margin: const EdgeInsets.only(bottom: 18),
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: const Color(0xFFE5E7EB)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
             children: [
-              Row(
-                children: [
-                  CircleAvatar(
-                    radius: 28,
-                    backgroundColor: const Color(0xFFE9E7FA),
-                    backgroundImage: avatarUrl.isNotEmpty
-                        ? NetworkImage(avatarUrl)
-                        : null,
-                    child: avatarUrl.isEmpty
-                        ? const Icon(Icons.person, color: _primary)
-                        : null,
+              Expanded(
+                child: Text(
+                  'Có ${_students.length} sinh viên',
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF475467),
                   ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                ),
+              ),
+              ElevatedButton.icon(
+                onPressed: () async {
+                  final changed = await Navigator.push<bool>(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => TeacherImportGradesScreen(
+                        classId: widget.classItem['id'].toString(),
+                      ),
+                    ),
+                  );
+
+                  if (changed == true) {
+                    await _loadData();
+                  }
+                },
+                icon: const Icon(Icons.upload_file_rounded),
+                label: const Text('Import Excel'),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            itemCount: _students.length,
+            itemBuilder: (context, index) {
+              final item = _students[index];
+              final user = Map<String, dynamic>.from(
+                (item['user'] ?? {}) as Map,
+              );
+              final studentId = (item['studentId'] ?? user['uid'] ?? '')
+                  .toString();
+              final fullName = (user['fullName'] ?? 'Chưa rõ tên').toString();
+              final avatarUrl = (user['avatarUrl'] ?? '').toString();
+              final studentCode =
+                  (user['studentInfo']?['studentCode'] ?? user['uid'] ?? '')
+                      .toString();
+
+              final grade = _findGradeByStudent(studentId);
+
+              final processController = TextEditingController(
+                text: (grade?['scoreProcess'] ?? '').toString(),
+              );
+              final midController = TextEditingController(
+                text: (grade?['scoreMid'] ?? '').toString(),
+              );
+
+              final status = (grade?['status'] ?? 'Chưa chấm').toString();
+              final totalTen = (grade?['totalTen'] ?? '--').toString();
+
+              return Container(
+                margin: const EdgeInsets.only(bottom: 18),
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: const Color(0xFFE5E7EB)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
                       children: [
-                        Text(
-                          fullName,
-                          style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w900,
-                            color: Color(0xFF0F172A),
+                        CircleAvatar(
+                          radius: 28,
+                          backgroundColor: const Color(0xFFE9E7FA),
+                          backgroundImage: avatarUrl.isNotEmpty
+                              ? NetworkImage(avatarUrl)
+                              : null,
+                          child: avatarUrl.isEmpty
+                              ? const Icon(Icons.person, color: _primary)
+                              : null,
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                fullName,
+                                style: const TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w900,
+                                  color: Color(0xFF0F172A),
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Trạng thái: $status',
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                  color: status == 'Pass'
+                                      ? Colors.green
+                                      : status == 'Fail'
+                                      ? Colors.red
+                                      : const Color(0xFF64748B),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        const SizedBox(height: 4),
                         Text(
-                          'Trạng thái: $status',
-                          style: TextStyle(
+                          'ID: $studentCode',
+                          style: const TextStyle(
                             fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                            color: status == 'Pass'
-                                ? Colors.green
-                                : status == 'Fail'
-                                ? Colors.red
-                                : const Color(0xFF64748B),
+                            color: Color(0xFF94A3B8),
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
                       ],
                     ),
-                  ),
-                  Text(
-                    'ID: $studentCode',
-                    style: const TextStyle(
-                      fontSize: 15,
-                      color: Color(0xFF94A3B8),
-                      fontWeight: FontWeight.w700,
+                    const SizedBox(height: 18),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildScoreField(
+                            'CHUYÊN CẦN',
+                            processController,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _buildScoreField('GIỮA KỲ', midController),
+                        ),
+                      ],
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 18),
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildScoreField('CHUYÊN CẦN', processController),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(child: _buildScoreField('GIỮA KỲ', midController)),
-                  const SizedBox(width: 12),
-                  Expanded(child: _buildScoreField('CUỐI KỲ', finalController)),
-                ],
-              ),
-              const SizedBox(height: 14),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Tổng kết: $totalTen',
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w800,
-                      color: Color(0xFF1B2A8A),
-                    ),
-                  ),
-                  ElevatedButton.icon(
-                    onPressed: () async {
-                      try {
-                        await _repo.upsertGrade(
-                          classId: widget.classItem['id'].toString(),
-                          studentId: studentId,
-                          scoreProcess:
-                              double.tryParse(processController.text.trim()) ??
-                              0,
-                          scoreMid:
-                              double.tryParse(midController.text.trim()) ?? 0,
-                          scoreFinal:
-                              double.tryParse(finalController.text.trim()) ?? 0,
-                        );
+                    const SizedBox(height: 14),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Tổng kết: $totalTen',
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF1B2A8A),
+                          ),
+                        ),
+                        ElevatedButton.icon(
+                          onPressed: () async {
+                            try {
+                              await _repo.upsertGrade(
+                                classId: widget.classItem['id'].toString(),
+                                studentId: studentId,
+                                scoreProcess:
+                                    double.tryParse(
+                                      processController.text.trim(),
+                                    ) ??
+                                    0,
+                                scoreMid:
+                                    double.tryParse(
+                                      midController.text.trim(),
+                                    ) ??
+                                    0,
+                              );
 
-                        if (!mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Đã lưu điểm cho $fullName')),
-                        );
-                        await _loadData();
-                      } catch (e) {
-                        if (!mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Lưu điểm thất bại: $e')),
-                        );
-                      }
-                    },
-                    icon: const Icon(Icons.save_outlined),
-                    label: const Text('Lưu điểm'),
-                  ),
-                ],
-              ),
-            ],
+                              if (!mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Đã lưu điểm cho $fullName'),
+                                ),
+                              );
+                              await _loadData();
+                            } catch (e) {
+                              if (!mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Lưu điểm thất bại: $e'),
+                                ),
+                              );
+                            }
+                          },
+                          icon: const Icon(Icons.save_outlined),
+                          label: const Text('Lưu điểm'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            },
           ),
-        );
-      },
+        ),
+      ],
     );
   }
 

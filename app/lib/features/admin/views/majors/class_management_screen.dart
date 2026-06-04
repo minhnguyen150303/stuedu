@@ -110,6 +110,10 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
     return cls['isVisibleForRegistration'] != false;
   }
 
+  bool _isLifecycleHidden(Map<String, dynamic> cls) {
+    return cls['hidden'] == true || cls['isHidden'] == true;
+  }
+
   String _visibilityLabel(Map<String, dynamic> cls) {
     final visible = _isClassVisible(cls);
     return visible ? 'Hiển thị' : 'Đã ẩn';
@@ -190,7 +194,6 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
       courseId: widget.course['id'].toString(),
       yearNumber: (widget.semester['yearNumber'] ?? '').toString(),
       termNumber: (widget.semester['termNumber'] ?? '').toString(),
-      hidden: 'false',
     );
 
     final enriched = items.map((item) {
@@ -331,7 +334,6 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
   Map<String, String> _mapLifecycleFieldErrors(Object e) {
     final msg = e.toString().toLowerCase();
 
-    // Trùng mã lớp mẫu
     if (msg.contains('lifecycle classcode already exists') ||
         msg.contains('classcode already exists') ||
         msg.contains('class code already exists')) {
@@ -340,14 +342,12 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
       };
     }
 
-    // Trùng phòng
     if (msg.contains('room conflict')) {
       return {
         'room': 'Phòng học đã bị trùng với lớp khác trong cùng khung giờ.',
       };
     }
 
-    // Trùng giảng viên
     if (msg.contains('teacher schedule conflict')) {
       return {
         'teacher':
@@ -355,18 +355,15 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
       };
     }
 
-    // Trùng lịch với lớp cùng môn
     if (msg.contains('same course') ||
         msg.contains('schedule conflict with another lifecycle')) {
       return {'schedule': 'Lịch học bị trùng với lớp khác của cùng môn.'};
     }
 
-    // Lỗi lịch chung
     if (msg.contains('schedule')) {
       return {'schedule': 'Lịch học bị trùng hoặc không hợp lệ.'};
     }
 
-    // Không tìm thấy học kỳ
     if (msg.contains('semester not found')) {
       return {'submit': 'Không tìm thấy học kỳ hoặc chu kỳ học kỳ.'};
     }
@@ -405,6 +402,7 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
         context: context,
         initialTime: startTime ?? const TimeOfDay(hour: 8, minute: 0),
       );
+
       if (picked != null) {
         setSheetState(() {
           startTime = picked;
@@ -419,6 +417,7 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
         context: context,
         initialTime: endTime ?? const TimeOfDay(hour: 10, minute: 0),
       );
+
       if (picked != null) {
         setSheetState(() {
           endTime = picked;
@@ -444,9 +443,9 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
               child: Container(
                 decoration: const BoxDecoration(
                   color: Color(0xFFF9FAFC),
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
                 ),
-                padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+                padding: const EdgeInsets.fromLTRB(20, 18, 20, 28),
                 child: SafeArea(
                   top: false,
                   child: FutureBuilder<List<Map<String, dynamic>>>(
@@ -466,16 +465,46 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
                                 borderRadius: BorderRadius.circular(999),
                               ),
                             ),
-                            const SizedBox(height: 18),
-                            const Text(
-                              'Thêm lớp mẫu',
-                              style: TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.w900,
-                                color: Color(0xFF0F172A),
-                              ),
-                            ),
                             const SizedBox(height: 20),
+                            Row(
+                              children: [
+                                Container(
+                                  width: 52,
+                                  height: 52,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFEDEFF6),
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                  child: const Icon(
+                                    Icons.add_home_work_rounded,
+                                    color: _primary,
+                                    size: 28,
+                                  ),
+                                ),
+                                const SizedBox(width: 14),
+                                const Expanded(
+                                  child: Text(
+                                    'Thêm lớp mẫu',
+                                    style: TextStyle(
+                                      fontSize: 24,
+                                      fontWeight: FontWeight.w900,
+                                      color: Color(0xFF0F172A),
+                                    ),
+                                  ),
+                                ),
+                                IconButton(
+                                  onPressed: submitting
+                                      ? null
+                                      : () =>
+                                            Navigator.pop(sheetContext, false),
+                                  icon: const Icon(
+                                    Icons.close_rounded,
+                                    color: Color(0xFF64748B),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 22),
 
                             _ClassField(
                               label: 'Mã lớp',
@@ -568,6 +597,7 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
                                     final uid = t['uid'].toString();
                                     final fullName =
                                         (t['fullName'] ?? 'Chưa rõ').toString();
+
                                     return DropdownMenuItem<String>(
                                       value: uid,
                                       child: Text(fullName),
@@ -623,6 +653,7 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
                               runSpacing: 8,
                               children: [2, 3, 4, 5, 6, 7, 8].map((day) {
                                 final selected = selectedDays.contains(day);
+
                                 return FilterChip(
                                   label: Text(_dayLabel(day)),
                                   selected: selected,
@@ -633,11 +664,14 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
                                       } else {
                                         selectedDays.add(day);
                                       }
+
                                       daysError = null;
                                       submitError = null;
                                     });
                                   },
                                   selectedColor: const Color(0xFFEDEBFF),
+                                  backgroundColor: Colors.white,
+                                  checkmarkColor: _primary,
                                   labelStyle: TextStyle(
                                     color: selected
                                         ? _primary
@@ -647,9 +681,9 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
                                   side: BorderSide(
                                     color: daysError != null
                                         ? Colors.red
-                                        : (selected
-                                              ? _primary
-                                              : const Color(0xFFD9DDEA)),
+                                        : selected
+                                        ? _primary
+                                        : const Color(0xFFD9DDEA),
                                   ),
                                 );
                               }).toList(),
@@ -708,12 +742,20 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
                             const SizedBox(height: 16),
 
                             if (submitError != null) ...[
-                              Align(
-                                alignment: Alignment.centerLeft,
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(13),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFFFF1F2),
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(
+                                    color: const Color(0xFFFECACA),
+                                  ),
+                                ),
                                 child: Text(
                                   submitError!,
                                   style: const TextStyle(
-                                    color: Colors.red,
+                                    color: Color(0xFFDC2626),
                                     fontSize: 13,
                                     fontWeight: FontWeight.w700,
                                   ),
@@ -734,11 +776,19 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
                                           ),
                                     style: OutlinedButton.styleFrom(
                                       minimumSize: const Size.fromHeight(56),
+                                      backgroundColor: const Color(0xFFF1F5F9),
+                                      foregroundColor: const Color(0xFF334155),
+                                      side: BorderSide.none,
                                       shape: RoundedRectangleBorder(
                                         borderRadius: BorderRadius.circular(16),
                                       ),
                                     ),
-                                    child: const Text('Hủy'),
+                                    child: const Text(
+                                      'Hủy',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(width: 14),
@@ -890,6 +940,7 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
                                     style: FilledButton.styleFrom(
                                       backgroundColor: _primary,
                                       minimumSize: const Size.fromHeight(56),
+                                      elevation: 0,
                                       shape: RoundedRectangleBorder(
                                         borderRadius: BorderRadius.circular(16),
                                       ),
@@ -906,7 +957,7 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
                                         : const Text(
                                             'Lưu lớp mẫu',
                                             style: TextStyle(
-                                              fontWeight: FontWeight.w800,
+                                              fontWeight: FontWeight.w900,
                                             ),
                                           ),
                                   ),
@@ -968,6 +1019,7 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
         try {
           final parts = value.split(':');
           if (parts.length != 2) return null;
+
           return TimeOfDay(
             hour: int.parse(parts[0]),
             minute: int.parse(parts[1]),
@@ -1004,6 +1056,7 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
         context: context,
         initialTime: startTime ?? const TimeOfDay(hour: 8, minute: 0),
       );
+
       if (picked != null) {
         setSheetState(() {
           startTime = picked;
@@ -1018,6 +1071,7 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
         context: context,
         initialTime: endTime ?? const TimeOfDay(hour: 10, minute: 0),
       );
+
       if (picked != null) {
         setSheetState(() {
           endTime = picked;
@@ -1043,9 +1097,9 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
               child: Container(
                 decoration: const BoxDecoration(
                   color: Color(0xFFF9FAFC),
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
                 ),
-                padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+                padding: const EdgeInsets.fromLTRB(20, 18, 20, 28),
                 child: SafeArea(
                   top: false,
                   child: FutureBuilder<List<Map<String, dynamic>>>(
@@ -1065,16 +1119,46 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
                                 borderRadius: BorderRadius.circular(999),
                               ),
                             ),
-                            const SizedBox(height: 18),
-                            const Text(
-                              'Sửa lớp mẫu',
-                              style: TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.w900,
-                                color: Color(0xFF0F172A),
-                              ),
-                            ),
                             const SizedBox(height: 20),
+                            Row(
+                              children: [
+                                Container(
+                                  width: 52,
+                                  height: 52,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFEDEFF6),
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                  child: const Icon(
+                                    Icons.edit_calendar_rounded,
+                                    color: _primary,
+                                    size: 28,
+                                  ),
+                                ),
+                                const SizedBox(width: 14),
+                                const Expanded(
+                                  child: Text(
+                                    'Sửa lớp mẫu',
+                                    style: TextStyle(
+                                      fontSize: 24,
+                                      fontWeight: FontWeight.w900,
+                                      color: Color(0xFF0F172A),
+                                    ),
+                                  ),
+                                ),
+                                IconButton(
+                                  onPressed: submitting
+                                      ? null
+                                      : () =>
+                                            Navigator.pop(sheetContext, false),
+                                  icon: const Icon(
+                                    Icons.close_rounded,
+                                    color: Color(0xFF64748B),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 22),
 
                             _ClassField(
                               label: 'Mã lớp',
@@ -1171,6 +1255,7 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
                                     final uid = t['uid'].toString();
                                     final fullName =
                                         (t['fullName'] ?? 'Chưa rõ').toString();
+
                                     return DropdownMenuItem<String>(
                                       value: uid,
                                       child: Text(fullName),
@@ -1226,6 +1311,7 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
                               runSpacing: 8,
                               children: [2, 3, 4, 5, 6, 7, 8].map((day) {
                                 final selected = selectedDays.contains(day);
+
                                 return FilterChip(
                                   label: Text(_dayLabel(day)),
                                   selected: selected,
@@ -1236,11 +1322,14 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
                                       } else {
                                         selectedDays.add(day);
                                       }
+
                                       daysError = null;
                                       submitError = null;
                                     });
                                   },
                                   selectedColor: const Color(0xFFEDEBFF),
+                                  backgroundColor: Colors.white,
+                                  checkmarkColor: _primary,
                                   labelStyle: TextStyle(
                                     color: selected
                                         ? _primary
@@ -1250,9 +1339,9 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
                                   side: BorderSide(
                                     color: daysError != null
                                         ? Colors.red
-                                        : (selected
-                                              ? _primary
-                                              : const Color(0xFFD9DDEA)),
+                                        : selected
+                                        ? _primary
+                                        : const Color(0xFFD9DDEA),
                                   ),
                                 );
                               }).toList(),
@@ -1311,12 +1400,20 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
                             const SizedBox(height: 16),
 
                             if (submitError != null) ...[
-                              Align(
-                                alignment: Alignment.centerLeft,
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(13),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFFFF1F2),
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(
+                                    color: const Color(0xFFFECACA),
+                                  ),
+                                ),
                                 child: Text(
                                   submitError!,
                                   style: const TextStyle(
-                                    color: Colors.red,
+                                    color: Color(0xFFDC2626),
                                     fontSize: 13,
                                     fontWeight: FontWeight.w700,
                                   ),
@@ -1324,7 +1421,6 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
                               ),
                               const SizedBox(height: 12),
                             ],
-
                             Row(
                               children: [
                                 Expanded(
@@ -1337,11 +1433,19 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
                                           ),
                                     style: OutlinedButton.styleFrom(
                                       minimumSize: const Size.fromHeight(56),
+                                      backgroundColor: const Color(0xFFF1F5F9),
+                                      foregroundColor: const Color(0xFF334155),
+                                      side: BorderSide.none,
                                       shape: RoundedRectangleBorder(
                                         borderRadius: BorderRadius.circular(16),
                                       ),
                                     ),
-                                    child: const Text('Hủy'),
+                                    child: const Text(
+                                      'Hủy',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(width: 14),
@@ -1482,6 +1586,7 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
                                     style: FilledButton.styleFrom(
                                       backgroundColor: _primary,
                                       minimumSize: const Size.fromHeight(56),
+                                      elevation: 0,
                                       shape: RoundedRectangleBorder(
                                         borderRadius: BorderRadius.circular(16),
                                       ),
@@ -1498,7 +1603,7 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
                                         : const Text(
                                             'Lưu thay đổi',
                                             style: TextStyle(
-                                              fontWeight: FontWeight.w800,
+                                              fontWeight: FontWeight.w900,
                                             ),
                                           ),
                                   ),
@@ -1528,6 +1633,7 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
 
   Future<void> _showClassActions(Map<String, dynamic> cls) async {
     final isVisible = _isClassVisible(cls);
+    final isLifecycleHidden = _isLifecycleHidden(cls);
     final isLifecycleTab = _tab == 0;
     final isRunningTab = _tab == 1;
     final isHistoryTab = _tab == 2;
@@ -1539,7 +1645,7 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
         return Container(
           decoration: const BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
           ),
           padding: const EdgeInsets.fromLTRB(20, 18, 20, 28),
           child: SafeArea(
@@ -1556,14 +1662,33 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
                   ),
                 ),
                 const SizedBox(height: 18),
-
-                Text(
-                  'Tác vụ lớp ${(cls['classCode'] ?? '').toString()}',
-                  style: const TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w900,
-                    color: Color(0xFF0F172A),
-                  ),
+                Row(
+                  children: [
+                    Container(
+                      width: 52,
+                      height: 52,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEDEFF6),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: const Icon(
+                        Icons.tune_rounded,
+                        color: _primary,
+                        size: 28,
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Text(
+                        'Tác vụ lớp ${(cls['classCode'] ?? '').toString()}',
+                        style: const TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w900,
+                          color: Color(0xFF0F172A),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 18),
                 if (isLifecycleTab && !_canManageLifecycle)
@@ -1575,12 +1700,26 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(color: const Color(0xFFFCD34D)),
                     ),
-                    child: const Text(
-                      'Không thể thao tác lớp mẫu trong lúc học kỳ đang học. Chỉ được tạo, sửa hoặc ẩn khi học kỳ đang chuẩn bị hoặc đã kết thúc.',
-                      style: TextStyle(
-                        color: Color(0xFF9A3412),
-                        fontWeight: FontWeight.w700,
-                      ),
+                    child: const Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.info_outline_rounded,
+                          color: Color(0xFFB45309),
+                          size: 20,
+                        ),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Không thể thao tác lớp mẫu trong lúc học kỳ đang học. Chỉ được tạo, sửa hoặc ẩn khi học kỳ đang chuẩn bị hoặc đã kết thúc.',
+                            style: TextStyle(
+                              color: Color(0xFF9A3412),
+                              fontWeight: FontWeight.w700,
+                              height: 1.35,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 if (isLifecycleTab && !_canManageLifecycle)
@@ -1589,37 +1728,56 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
                   _ActionTile(
                     icon: Icons.edit_rounded,
                     label: 'Sửa lớp mẫu',
+                    color: const Color(0xFF2563EB),
+                    bgColor: const Color(0xFFEFF6FF),
                     onTap: () => Navigator.pop(sheetContext, 'editLifecycle'),
                   ),
-
                 if (isLifecycleTab && _canManageLifecycle)
                   _ActionTile(
-                    icon: Icons.visibility_off_rounded,
-                    label: 'Ẩn lớp mẫu',
-                    onTap: () => Navigator.pop(sheetContext, 'hideLifecycle'),
+                    icon: isLifecycleHidden
+                        ? Icons.visibility_rounded
+                        : Icons.visibility_off_rounded,
+                    label: isLifecycleHidden ? 'Hiện lớp mẫu' : 'Ẩn lớp mẫu',
+                    color: isLifecycleHidden
+                        ? const Color(0xFF2563EB)
+                        : const Color(0xFFB45309),
+                    bgColor: isLifecycleHidden
+                        ? const Color(0xFFEFF6FF)
+                        : const Color(0xFFFFF4DB),
+                    onTap: () => Navigator.pop(
+                      sheetContext,
+                      isLifecycleHidden ? 'showLifecycle' : 'hideLifecycle',
+                    ),
                   ),
-
                 if (isRunningTab)
                   _ActionTile(
                     icon: Icons.people_alt_rounded,
                     label: 'Xem danh sách sinh viên',
+                    color: const Color(0xFF1B2A8A),
+                    bgColor: const Color(0xFFEDEFF6),
                     onTap: () => Navigator.pop(sheetContext, 'students'),
                   ),
-
                 if (isRunningTab)
                   _ActionTile(
                     icon: isVisible
                         ? Icons.visibility_off_rounded
                         : Icons.visibility_rounded,
                     label: isVisible ? 'Ẩn lớp' : 'Hiện lớp',
+                    color: isVisible
+                        ? const Color(0xFFB45309)
+                        : const Color(0xFF2563EB),
+                    bgColor: isVisible
+                        ? const Color(0xFFFFF4DB)
+                        : const Color(0xFFEFF6FF),
                     onTap: () =>
                         Navigator.pop(sheetContext, 'toggleVisibility'),
                   ),
-
                 if (isHistoryTab)
                   _ActionTile(
                     icon: Icons.history_rounded,
                     label: 'Xem dữ liệu lịch sử',
+                    color: const Color(0xFF64748B),
+                    bgColor: const Color(0xFFF1F5F9),
                     onTap: () => Navigator.pop(sheetContext, 'students'),
                   ),
               ],
@@ -1657,7 +1815,16 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
           successMessage: 'Đã ẩn lớp mẫu',
         );
         break;
-
+      // case 'showLifecycle':
+      //   await _confirmAndRun(
+      //     title: 'Hiện lớp mẫu',
+      //     content:
+      //         'Lớp mẫu này sẽ được dùng lại để tự động sinh lớp mới trong các chu kỳ tiếp theo.',
+      //     actionLabel: 'Hiện lớp mẫu',
+      //     onConfirmed: () => _repo.showClassLifecycle(cls['id'].toString()),
+      //     successMessage: 'Đã hiện lớp mẫu',
+      //   );
+      //   break;
       case 'toggleVisibility':
         final nextValue = !_isClassVisible(cls);
 
@@ -1686,33 +1853,141 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
   }) async {
     final ok = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(title),
-        content: Text(content),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Hủy'),
+      builder: (dialogContext) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(22, 24, 22, 18),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(28),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.12),
+                  blurRadius: 24,
+                  offset: const Offset(0, 12),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 72,
+                  height: 72,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF4DB),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: const Color(0xFFFCD34D),
+                      width: 1.2,
+                    ),
+                  ),
+                  child: const Icon(
+                    Icons.warning_amber_rounded,
+                    size: 36,
+                    color: Color(0xFFB45309),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Text(
+                  title,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w900,
+                    color: Color(0xFF0F172A),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  content,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    height: 1.45,
+                    color: Color(0xFF64748B),
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Row(
+                  children: [
+                    Expanded(
+                      child: SizedBox(
+                        height: 48,
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.pop(dialogContext, false),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(0xFF334155),
+                            side: const BorderSide(
+                              color: Color(0xFFE2E8F0),
+                              width: 1.2,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            backgroundColor: const Color(0xFFF8FAFC),
+                          ),
+                          child: const Text(
+                            'Hủy',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: SizedBox(
+                        height: 48,
+                        child: FilledButton(
+                          onPressed: () => Navigator.pop(dialogContext, true),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: const Color(0xFFB45309),
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                          ),
+                          child: Text(
+                            actionLabel,
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: Text(actionLabel),
-          ),
-        ],
-      ),
+        );
+      },
     );
 
     if (ok != true) return;
 
     try {
       await onConfirmed();
+
       if (!mounted) return;
+
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(successMessage)));
+
       setState(() {});
     } catch (e) {
       if (!mounted) return;
+
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Lỗi: $e')));
@@ -1725,418 +2000,328 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
 
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FB),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFFF5F7FB),
-        title: const Text(
-          'Quản lý Lớp học',
-          style: TextStyle(fontWeight: FontWeight.w900),
-        ),
-        actions: [
-          IconButton(
-            onPressed: () => _showComingSoon('Tìm kiếm lớp: làm sau'),
-            icon: const Icon(Icons.search_rounded),
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          Container(
-            width: double.infinity,
-            color: const Color(0xFFEFF2F7),
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Môn học  ›  $courseName',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    color: Color(0xFF64748B),
-                    fontWeight: FontWeight.w600,
+      body: SafeArea(
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+              color: const Color(0xFFF5F7FB),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(14),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.05),
+                              blurRadius: 12,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: IconButton(
+                          onPressed: () => Navigator.pop(context),
+                          icon: const Icon(
+                            Icons.arrow_back_rounded,
+                            color: Color(0xFF0F172A),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Quản lý lớp học',
+                              style: TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.w900,
+                                color: Color(0xFF0F172A),
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              courseName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Color(0xFF64748B),
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
-                  ),
-                  decoration: BoxDecoration(
-                    color: _canManageLifecycle
-                        ? const Color(0xFFEDEBFF)
-                        : const Color(0xFFFFEDD5),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(
-                    _semesterStatusLabel,
-                    style: TextStyle(
-                      color: _canManageLifecycle
-                          ? const Color(0xFF5B21B6)
-                          : const Color(0xFFB45309),
-                      fontWeight: FontWeight.w800,
+                  const SizedBox(height: 16),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(22),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.04),
+                          blurRadius: 18,
+                          offset: const Offset(0, 8),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: _canManageLifecycle
+                                ? const Color(0xFFEDEBFF)
+                                : const Color(0xFFFFEDD5),
+                            borderRadius: BorderRadius.circular(15),
+                          ),
+                          child: Icon(
+                            _canManageLifecycle
+                                ? Icons.check_circle_rounded
+                                : Icons.info_outline_rounded,
+                            color: _canManageLifecycle
+                                ? const Color(0xFF5B21B6)
+                                : const Color(0xFFB45309),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            _semesterStatusLabel,
+                            style: TextStyle(
+                              color: _canManageLifecycle
+                                  ? const Color(0xFF5B21B6)
+                                  : const Color(0xFFB45309),
+                              fontWeight: FontWeight.w900,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(5),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEFF2F7),
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: Row(
+                      children: [
+                        _ClassTab(
+                          label: 'Lớp mẫu',
+                          selected: _tab == 0,
+                          onTap: () => setState(() => _tab = 0),
+                        ),
+                        _ClassTab(
+                          label: 'Đang học',
+                          selected: _tab == 1,
+                          onTap: () => setState(() => _tab = 1),
+                        ),
+                        _ClassTab(
+                          label: 'Lịch sử',
+                          selected: _tab == 2,
+                          onTap: () => setState(() => _tab = 2),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-          Row(
-            children: [
-              Expanded(
-                child: _ClassTab(
-                  label: 'Lớp mẫu',
-                  selected: _tab == 0,
-                  onTap: () => setState(() => _tab = 0),
-                ),
-              ),
-              Expanded(
-                child: _ClassTab(
-                  label: 'Lớp đang học',
-                  selected: _tab == 1,
-                  onTap: () => setState(() => _tab = 1),
-                ),
-              ),
-              Expanded(
-                child: _ClassTab(
-                  label: 'Lớp lịch sử',
-                  selected: _tab == 2,
-                  onTap: () => setState(() => _tab = 2),
-                ),
-              ),
-            ],
-          ),
-          Expanded(
-            child: FutureBuilder<List<Map<String, dynamic>>>(
-              future: _loadItemsByTab(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
+            Expanded(
+              child: FutureBuilder<List<Map<String, dynamic>>>(
+                future: _loadItemsByTab(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
 
-                if (snapshot.hasError) {
-                  return Center(child: Text('Lỗi: ${snapshot.error}'));
-                }
+                  if (snapshot.hasError) {
+                    return Center(child: Text('Lỗi: ${snapshot.error}'));
+                  }
 
-                final items = snapshot.data ?? [];
+                  final items = snapshot.data ?? [];
 
-                return RefreshIndicator(
-                  onRefresh: _refresh,
-                  child: ListView(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              '${_tab == 0
-                                  ? 'Danh sách Lớp mẫu'
-                                  : _tab == 1
-                                  ? 'Danh sách Lớp đang học'
-                                  : 'Danh sách Lớp lịch sử'} (${items.length.toString().padLeft(2, '0')})',
-                              style: const TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.w900,
+                  return RefreshIndicator(
+                    onRefresh: _refresh,
+                    child: ListView(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    _tab == 0
+                                        ? 'Danh sách lớp mẫu'
+                                        : _tab == 1
+                                        ? 'Danh sách lớp đang học'
+                                        : 'Danh sách lớp lịch sử',
+                                    style: const TextStyle(
+                                      fontSize: 19,
+                                      fontWeight: FontWeight.w900,
+                                      color: Color(0xFF0F172A),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    '${items.length.toString().padLeft(2, '0')} lớp',
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      color: Color(0xFF64748B),
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-                          ),
-                          if (_tab == 0 && _canManageLifecycle)
-                            InkWell(
-                              borderRadius: BorderRadius.circular(18),
-                              onTap: _showCreateLifecycleForm,
-                              child: Container(
-                                width: 62,
-                                height: 62,
-                                decoration: BoxDecoration(
-                                  color: _primary,
-                                  borderRadius: BorderRadius.circular(18),
-                                ),
-                                child: const Icon(
-                                  Icons.add,
-                                  color: Colors.white,
-                                  size: 34,
+                            if (_tab == 0 && _canManageLifecycle)
+                              SizedBox(
+                                height: 44,
+                                child: FilledButton.icon(
+                                  onPressed: _showCreateLifecycleForm,
+                                  style: FilledButton.styleFrom(
+                                    backgroundColor: _primary,
+                                    foregroundColor: Colors.white,
+                                    elevation: 0,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 14,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(14),
+                                    ),
+                                  ),
+                                  icon: const Icon(Icons.add_rounded, size: 20),
+                                  label: const Text(
+                                    'Thêm',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
                                 ),
                               ),
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 14),
-
-                      if (_tab == 0 && !_canManageLifecycle)
-                        Container(
-                          margin: const EdgeInsets.only(bottom: 14),
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFFFF7ED),
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: const Color(0xFFFCD34D)),
-                          ),
-                          child: const Text(
-                            'Học kỳ hiện không cho phép tạo hoặc chỉnh sửa lớp mẫu. Chỉ thao tác khi học kỳ đang chuẩn bị hoặc đã kết thúc.',
-                            style: TextStyle(
-                              color: Color(0xFF9A3412),
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
+                          ],
                         ),
-                      if (items.isEmpty)
-                        Container(
-                          padding: const EdgeInsets.all(28),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(22),
-                            border: Border.all(color: const Color(0xFFDCE2EE)),
-                          ),
-                          child: Column(
-                            children: [
-                              const Icon(
-                                Icons.inbox_rounded,
-                                size: 44,
-                                color: Color(0xFF94A3B8),
-                              ),
-                              const SizedBox(height: 12),
-                              Text(
-                                _tab == 0
-                                    ? 'Chưa có lớp mẫu nào'
-                                    : _tab == 1
-                                    ? 'Chưa có lớp đang học nào'
-                                    : 'Chưa có lớp lịch sử nào',
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  color: Color(0xFF64748B),
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-
-                      ...items.map((cls) {
-                        final isLifecycleTab = _tab == 0;
-                        final isRunningTab = _tab == 1;
-                        final isHistoryTab = _tab == 2;
-                        final classCode = (cls['classCode'] ?? '').toString();
-                        final teacherName = (cls['teacherName'] ?? 'Chưa rõ')
-                            .toString();
-                        final currentStudents =
-                            (cls['currentStudents'] as num?)?.toInt() ?? 0;
-                        final maxStudents =
-                            (cls['maxStudents'] as num?)?.toInt() ?? 0;
-                        final room = (cls['room'] ?? '--').toString();
-                        final schedule = List<dynamic>.from(
-                          (cls['schedule'] as List?) ?? const [],
-                        );
-
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 16),
-                          child: Container(
-                            padding: const EdgeInsets.all(18),
+                        const SizedBox(height: 14),
+                        if (_tab == 0 && !_canManageLifecycle)
+                          Container(
+                            margin: const EdgeInsets.only(bottom: 14),
+                            padding: const EdgeInsets.all(14),
                             decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(22),
+                              color: const Color(0xFFFFF7ED),
+                              borderRadius: BorderRadius.circular(16),
                               border: Border.all(
-                                color: const Color(0xFFDCE2EE),
+                                color: const Color(0xFFFCD34D),
                               ),
                             ),
-                            child: Column(
+                            child: const Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Expanded(
-                                      child: Wrap(
-                                        spacing: 8,
-                                        runSpacing: 8,
-                                        children: [
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 12,
-                                              vertical: 8,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: const Color(0xFFEDEBFF),
-                                              borderRadius:
-                                                  BorderRadius.circular(10),
-                                            ),
-                                            child: Text(
-                                              'MÃ LỚP: $classCode',
-                                              style: const TextStyle(
-                                                color: _primary,
-                                                fontWeight: FontWeight.w900,
-                                              ),
-                                            ),
-                                          ),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 10,
-                                              vertical: 8,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: isLifecycleTab
-                                                  ? const Color(0xFFEDEBFF)
-                                                  : _classLifecycleBg(cls),
-                                              borderRadius:
-                                                  BorderRadius.circular(10),
-                                            ),
-                                            child: Text(
-                                              isLifecycleTab
-                                                  ? 'LỚP MẪU'
-                                                  : _classLifecycleLabel(cls),
-                                              style: TextStyle(
-                                                color: isLifecycleTab
-                                                    ? const Color(0xFF5B21B6)
-                                                    : _classLifecycleTextColor(
-                                                        cls,
-                                                      ),
-                                                fontWeight: FontWeight.w900,
-                                              ),
-                                            ),
-                                          ),
-                                          if (!isLifecycleTab)
-                                            Container(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                    horizontal: 10,
-                                                    vertical: 8,
-                                                  ),
-                                              decoration: BoxDecoration(
-                                                color: _visibilityBg(cls),
-                                                borderRadius:
-                                                    BorderRadius.circular(10),
-                                              ),
-                                              child: Text(
-                                                _visibilityLabel(cls),
-                                                style: TextStyle(
-                                                  color: _visibilityTextColor(
-                                                    cls,
-                                                  ),
-                                                  fontWeight: FontWeight.w900,
-                                                ),
-                                              ),
-                                            ),
-                                        ],
-                                      ),
+                                Icon(
+                                  Icons.info_outline_rounded,
+                                  color: Color(0xFFB45309),
+                                  size: 20,
+                                ),
+                                SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'Học kỳ hiện không cho phép tạo hoặc chỉnh sửa lớp mẫu. Chỉ thao tác khi học kỳ đang chuẩn bị hoặc đã kết thúc.',
+                                    style: TextStyle(
+                                      color: Color(0xFF9A3412),
+                                      fontWeight: FontWeight.w700,
+                                      height: 1.35,
                                     ),
-                                    const SizedBox(width: 8),
-                                    IconButton(
-                                      onPressed: () => _showClassActions(cls),
-                                      icon: const Icon(Icons.more_vert_rounded),
-                                      visualDensity: VisualDensity.compact,
-                                      padding: EdgeInsets.zero,
-                                      constraints: const BoxConstraints(),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 10),
-                                Text(
-                                  courseName,
-                                  style: const TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w900,
                                   ),
-                                ),
-                                const SizedBox(height: 12),
-                                Text(
-                                  'Giảng viên: $teacherName',
-                                  style: const TextStyle(fontSize: 16),
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  'Phòng học: $room',
-                                  style: const TextStyle(fontSize: 16),
-                                ),
-                                if (isHistoryTab) ...[
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    'Năm học: ${(cls['academicYearSnapshot'] ?? '--').toString()}',
-                                    style: const TextStyle(fontSize: 16),
-                                  ),
-                                ],
-                                const SizedBox(height: 8),
-                                Text(
-                                  'Lịch học: ${_scheduleText(schedule)}',
-                                  style: const TextStyle(fontSize: 16),
-                                ),
-                                if (isRunningTab &&
-                                    (cls['lifecycleId'] ?? '')
-                                        .toString()
-                                        .isNotEmpty) ...[
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    'Nguồn mẫu: ${(cls['lifecycleId'] ?? '').toString()}',
-                                    style: const TextStyle(fontSize: 16),
-                                  ),
-                                ],
-                                const SizedBox(height: 8),
-                                Text(
-                                  isLifecycleTab
-                                      ? 'Sĩ số cấu hình: $maxStudents sinh viên'
-                                      : 'Sĩ số: $currentStudents/$maxStudents sinh viên',
-                                  style: const TextStyle(fontSize: 16),
-                                ),
-                                const SizedBox(height: 16),
-                                const Divider(),
-                                const SizedBox(height: 8),
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        'Cập nhật: ${_safeDateTime((cls['updatedAt'] ?? '').toString())}',
-                                        style: const TextStyle(
-                                          color: Color(0xFF94A3B8),
-                                          fontStyle: FontStyle.italic,
-                                        ),
-                                      ),
-                                    ),
-                                    if (!(isLifecycleTab &&
-                                        !_canManageLifecycle))
-                                      TextButton(
-                                        onPressed: () async {
-                                          if (isLifecycleTab) {
-                                            await _showEditLifecycleForm(cls);
-                                            await _refresh();
-                                            return;
-                                          }
-
-                                          await Navigator.push(
-                                            context,
-                                            MaterialPageRoute(
-                                              builder: (_) =>
-                                                  ClassStudentsScreen(
-                                                    classItem: cls,
-                                                    semester: widget.semester,
-                                                  ),
-                                            ),
-                                          );
-                                          await _refresh();
-                                        },
-                                        child: Text(
-                                          isLifecycleTab
-                                              ? 'Cấu hình →'
-                                              : isHistoryTab
-                                              ? 'Lịch sử →'
-                                              : 'Chi tiết →',
-                                          style: const TextStyle(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.w900,
-                                          ),
-                                        ),
-                                      ),
-                                  ],
                                 ),
                               ],
                             ),
                           ),
-                        );
-                      }),
-                    ],
-                  ),
-                );
-              },
+
+                        if (items.isEmpty)
+                          Container(
+                            padding: const EdgeInsets.all(28),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(22),
+                              border: Border.all(
+                                color: const Color(0xFFE2E8F0),
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.04),
+                                  blurRadius: 18,
+                                  offset: const Offset(0, 8),
+                                ),
+                              ],
+                            ),
+                            child: Column(
+                              children: [
+                                const Icon(
+                                  Icons.inbox_rounded,
+                                  size: 44,
+                                  color: Color(0xFF94A3B8),
+                                ),
+                                const SizedBox(height: 12),
+                                Text(
+                                  _tab == 0
+                                      ? 'Chưa có lớp mẫu nào'
+                                      : _tab == 1
+                                      ? 'Chưa có lớp đang học nào'
+                                      : 'Chưa có lớp lịch sử nào',
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    color: Color(0xFF64748B),
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+
+                        ...items.map((cls) {
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 14),
+                            child: _ClassCard(
+                              cls: cls,
+                              tab: _tab,
+                              scheduleText: _scheduleText,
+                              safeDateTime: _safeDateTime,
+                              classLifecycleLabel: _classLifecycleLabel,
+                              classLifecycleBg: _classLifecycleBg,
+                              classLifecycleTextColor: _classLifecycleTextColor,
+                              visibilityLabel: _visibilityLabel,
+                              visibilityBg: _visibilityBg,
+                              visibilityTextColor: _visibilityTextColor,
+                              onTap: () => _showClassActions(cls),
+                            ),
+                          );
+                        }),
+                      ],
+                    ),
+                  );
+                },
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -2157,25 +2342,295 @@ class _ClassTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.only(top: 14, bottom: 12),
-        decoration: BoxDecoration(
-          border: Border(
-            bottom: BorderSide(
-              color: selected ? _primary : const Color(0xFFDCE2EE),
-              width: selected ? 3 : 1,
+    return Expanded(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            color: selected ? Colors.white : Colors.transparent,
+            borderRadius: BorderRadius.circular(14),
+            boxShadow: selected
+                ? [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.06),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ]
+                : [],
+          ),
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 13.5,
+              fontWeight: FontWeight.w900,
+              color: selected ? _primary : const Color(0xFF64748B),
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _ClassCard extends StatelessWidget {
+  final Map<String, dynamic> cls;
+  final int tab;
+  final String Function(List<dynamic>) scheduleText;
+  final String Function(String?) safeDateTime;
+  final String Function(Map<String, dynamic>) classLifecycleLabel;
+  final Color Function(Map<String, dynamic>) classLifecycleBg;
+  final Color Function(Map<String, dynamic>) classLifecycleTextColor;
+  final String Function(Map<String, dynamic>) visibilityLabel;
+  final Color Function(Map<String, dynamic>) visibilityBg;
+  final Color Function(Map<String, dynamic>) visibilityTextColor;
+  final VoidCallback onTap;
+
+  const _ClassCard({
+    required this.cls,
+    required this.tab,
+    required this.scheduleText,
+    required this.safeDateTime,
+    required this.classLifecycleLabel,
+    required this.classLifecycleBg,
+    required this.classLifecycleTextColor,
+    required this.visibilityLabel,
+    required this.visibilityBg,
+    required this.visibilityTextColor,
+    required this.onTap,
+  });
+
+  static const _primary = Color(0xFF1B2A8A);
+
+  @override
+  Widget build(BuildContext context) {
+    final classCode = (cls['classCode'] ?? '').toString();
+    final teacherName = (cls['teacherName'] ?? 'Chưa rõ').toString();
+    final currentStudents = (cls['currentStudents'] as num?)?.toInt() ?? 0;
+    final maxStudents = (cls['maxStudents'] as num?)?.toInt() ?? 0;
+    final room = (cls['room'] ?? '--').toString();
+    final schedule = List<dynamic>.from((cls['schedule'] as List?) ?? const []);
+
+    final isLifecycleTab = tab == 0;
+    final isRunningTab = tab == 1;
+    final isHistoryTab = tab == 2;
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(24),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: const Color(0xFFE2E8F0)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 18,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 58,
+                  height: 58,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEDEFF6),
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: const Icon(
+                    Icons.groups_rounded,
+                    color: _primary,
+                    size: 30,
+                  ),
+                ),
+                const SizedBox(width: 13),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Lớp $classCode',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Color(0xFF0F172A),
+                          fontSize: 19,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        teacherName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Color(0xFF64748B),
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.more_horiz_rounded, color: Color(0xFF94A3B8)),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _InfoChip(
+                  icon: Icons.meeting_room_rounded,
+                  text: 'Phòng $room',
+                  color: const Color(0xFF2563EB),
+                  bgColor: const Color(0xFFEFF6FF),
+                ),
+                _InfoChip(
+                  icon: Icons.people_alt_rounded,
+                  text: '$currentStudents/$maxStudents SV',
+                  color: const Color(0xFF0F9B63),
+                  bgColor: const Color(0xFFE7F7EE),
+                ),
+                _InfoChip(
+                  icon: Icons.schedule_rounded,
+                  text: scheduleText(schedule),
+                  color: const Color(0xFF7C3AED),
+                  bgColor: const Color(0xFFF3E8FF),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                _StatusPill(
+                  text: classLifecycleLabel(cls),
+                  bgColor: classLifecycleBg(cls),
+                  color: classLifecycleTextColor(cls),
+                ),
+                const SizedBox(width: 8),
+                if (isRunningTab)
+                  _StatusPill(
+                    text: visibilityLabel(cls),
+                    bgColor: visibilityBg(cls),
+                    color: visibilityTextColor(cls),
+                  ),
+                if (isHistoryTab)
+                  _StatusPill(
+                    text: safeDateTime((cls['updatedAt'] ?? '').toString()),
+                    bgColor: const Color(0xFFF1F5F9),
+                    color: const Color(0xFF64748B),
+                  ),
+                const Spacer(),
+                Text(
+                  isLifecycleTab
+                      ? 'Tác vụ'
+                      : isRunningTab
+                      ? 'Chi tiết'
+                      : 'Lịch sử',
+                  style: const TextStyle(
+                    color: _primary,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 13,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  color: _primary,
+                  size: 22,
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _InfoChip extends StatelessWidget {
+  final IconData icon;
+  final String text;
+  final Color color;
+  final Color bgColor;
+
+  const _InfoChip({
+    required this.icon,
+    required this.text,
+    required this.color,
+    required this.bgColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              text,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: color,
+                fontSize: 12.5,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatusPill extends StatelessWidget {
+  final String text;
+  final Color bgColor;
+  final Color color;
+
+  const _StatusPill({
+    required this.text,
+    required this.bgColor,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Flexible(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: bgColor,
+          borderRadius: BorderRadius.circular(999),
+        ),
         child: Text(
-          label,
-          textAlign: TextAlign.center,
+          text,
+          overflow: TextOverflow.ellipsis,
+          maxLines: 1,
           style: TextStyle(
-            fontSize: 17,
+            color: color,
+            fontSize: 12.5,
             fontWeight: FontWeight.w900,
-            color: selected ? _primary : const Color(0xFF64748B),
           ),
         ),
       ),
@@ -2186,28 +2641,65 @@ class _ClassTab extends StatelessWidget {
 class _ActionTile extends StatelessWidget {
   final IconData icon;
   final String label;
+  final Color color;
+  final Color bgColor;
   final VoidCallback onTap;
 
   const _ActionTile({
     required this.icon,
     required this.label,
+    required this.color,
+    required this.bgColor,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-      leading: Icon(icon, color: const Color(0xFF1B2A8A)),
-      title: Text(
-        label,
-        style: const TextStyle(
-          fontSize: 16,
-          fontWeight: FontWeight.w700,
-          color: Color(0xFF0F172A),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Material(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(18),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(18),
+          child: Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    color: bgColor,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Icon(icon, color: color, size: 22),
+                ),
+                const SizedBox(width: 13),
+                Expanded(
+                  child: Text(
+                    label,
+                    style: const TextStyle(
+                      color: Color(0xFF0F172A),
+                      fontSize: 15,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  color: Color(0xFF94A3B8),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
-      onTap: onTap,
     );
   }
 }
@@ -2231,7 +2723,7 @@ class _ClassField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final hasError = errorText != null && errorText!.trim().isNotEmpty;
+    final hasError = errorText != null && errorText!.isNotEmpty;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2251,27 +2743,29 @@ class _ClassField extends StatelessWidget {
           onChanged: onChanged,
           decoration: InputDecoration(
             hintText: hintText,
+            hintStyle: const TextStyle(
+              color: Color(0xFF94A3B8),
+              fontWeight: FontWeight.w500,
+            ),
+            errorText: errorText,
             filled: true,
             fillColor: hasError ? const Color(0xFFFFF5F5) : Colors.white,
             contentPadding: const EdgeInsets.symmetric(
               horizontal: 16,
-              vertical: 16,
+              vertical: 15,
             ),
-            suffixIcon: hasError
-                ? const Icon(Icons.error, color: Colors.red)
-                : null,
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
               borderSide: BorderSide(
                 color: hasError ? Colors.red : const Color(0xFFD9DDEA),
-                width: hasError ? 1.8 : 1.0,
+                width: hasError ? 1.8 : 1.4,
               ),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
               borderSide: BorderSide(
                 color: hasError ? Colors.red : const Color(0xFFD9DDEA),
-                width: hasError ? 1.8 : 1.0,
+                width: hasError ? 1.8 : 1.4,
               ),
             ),
             focusedBorder: OutlineInputBorder(
@@ -2281,19 +2775,16 @@ class _ClassField extends StatelessWidget {
                 width: 1.8,
               ),
             ),
-          ),
-        ),
-        if (hasError) ...[
-          const SizedBox(height: 8),
-          Text(
-            errorText!,
-            style: const TextStyle(
-              color: Colors.red,
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
+            errorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: const BorderSide(color: Colors.red, width: 1.8),
+            ),
+            focusedErrorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: const BorderSide(color: Colors.red, width: 1.8),
             ),
           ),
-        ],
+        ),
       ],
     );
   }
@@ -2314,52 +2805,53 @@ class _SelectBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.w800,
-            color: hasError ? Colors.red : const Color(0xFF0F172A),
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: hasError ? const Color(0xFFFFF5F5) : Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: hasError ? Colors.red : const Color(0xFFD9DDEA),
+            width: hasError ? 1.8 : 1.4,
           ),
         ),
-        const SizedBox(height: 8),
-        InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(16),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-            decoration: BoxDecoration(
-              color: hasError ? const Color(0xFFFFF5F5) : Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: hasError ? Colors.red : const Color(0xFFD9DDEA),
-                width: hasError ? 1.8 : 1.0,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                color: hasError ? Colors.red : const Color(0xFF64748B),
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
               ),
             ),
-            child: Row(
+            const SizedBox(height: 6),
+            Row(
               children: [
                 Expanded(
                   child: Text(
                     value,
                     style: const TextStyle(
-                      fontSize: 15,
                       color: Color(0xFF0F172A),
-                      fontWeight: FontWeight.w600,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w900,
                     ),
                   ),
                 ),
-                Icon(
+                const Icon(
                   Icons.access_time_rounded,
-                  color: hasError ? Colors.red : null,
+                  color: Color(0xFF1B2A8A),
+                  size: 20,
                 ),
               ],
             ),
-          ),
+          ],
         ),
-      ],
+      ),
     );
   }
 }

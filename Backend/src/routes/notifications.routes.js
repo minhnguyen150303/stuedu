@@ -15,7 +15,7 @@ router.get(
 router.post(
     "/",
     requireAuth,
-    requireRole(["admin"]),
+    requireRole(["admin", "qlsv"]),
     validate(validateNotification),
     asyncHandler(controller.create)
 );

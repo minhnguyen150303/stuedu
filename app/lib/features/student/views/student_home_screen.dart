@@ -38,7 +38,6 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
     super.initState();
     _repo = StudentRepository(ApiClient(AppConfig.baseUrl));
     _loadDashboard();
-    _loadUnreadCount();
   }
 
   Future<void> _handleBackPressed() async {
@@ -513,7 +512,7 @@ class _HomeTab extends StatelessWidget {
           Row(
             children: [
               const Text(
-                "Lịch học hôm nay:",
+                "Thời khóa biểu hôm nay:",
                 style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
               ),
               const Spacer(),
@@ -523,7 +522,7 @@ class _HomeTab extends StatelessWidget {
 
           const SizedBox(height: 10),
           if (scheduleItems.isEmpty)
-            const _EmptyCard(message: 'Hôm nay không có lịch học')
+            const _EmptyCard(message: 'Hôm nay không có thời khóa biểu')
           else
             for (final item in scheduleItems) ...[
               _ScheduleCard(item: item),

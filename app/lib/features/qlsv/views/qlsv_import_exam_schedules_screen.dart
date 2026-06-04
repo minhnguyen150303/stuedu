@@ -3,52 +3,136 @@ import 'dart:io';
 import 'package:excel/excel.dart' as ex;
 import 'package:file_picker/file_picker.dart' as fp;
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import '../../../core/config/app_config.dart';
-import '../../../data/repositories/admin_repository.dart';
+import '../../../data/repositories/qlsv_repository.dart';
 import '../../../data/sources/remote/api_client.dart';
 
-class AdminImportUsersScreen extends StatefulWidget {
-  const AdminImportUsersScreen({super.key});
+class QlsvImportExamSchedulesScreen extends StatefulWidget {
+  const QlsvImportExamSchedulesScreen({super.key});
 
   @override
-  State<AdminImportUsersScreen> createState() => _AdminImportUsersScreenState();
+  State<QlsvImportExamSchedulesScreen> createState() =>
+      _QlsvImportExamSchedulesScreenState();
 }
 
-class _AdminImportUsersScreenState extends State<AdminImportUsersScreen> {
+class _QlsvImportExamSchedulesScreenState
+    extends State<QlsvImportExamSchedulesScreen> {
   static const _primary = Color(0xFF1B2A8A);
 
-  late final AdminRepository _repo;
+  late final QlsvRepository _repo;
 
   bool _loading = false;
   bool _importing = false;
 
   String? _fileName;
-  List<ImportUserRow> _rows = [];
+  List<ImportExamRow> _rows = [];
   Map<String, dynamic>? _result;
 
   @override
   void initState() {
     super.initState();
-    _repo = AdminRepository(ApiClient(AppConfig.baseUrl));
+    _repo = QlsvRepository(ApiClient(AppConfig.baseUrl));
   }
 
   String _cellToString(ex.Data? cell) {
     final value = cell?.value;
     if (value == null) return '';
+
+    // Excel date kiểu DateCellValue
+    if (value is ex.DateCellValue) {
+      final d = DateTime(value.year, value.month, value.day);
+      return '${d.year.toString().padLeft(4, '0')}-'
+          '${d.month.toString().padLeft(2, '0')}-'
+          '${d.day.toString().padLeft(2, '0')}';
+    }
+
+    // Excel date time
+    if (value is ex.DateTimeCellValue) {
+      final d = DateTime(
+        value.year,
+        value.month,
+        value.day,
+        value.hour,
+        value.minute,
+      );
+      return '${d.year.toString().padLeft(4, '0')}-'
+          '${d.month.toString().padLeft(2, '0')}-'
+          '${d.day.toString().padLeft(2, '0')}';
+    }
+
     return value.toString().trim();
   }
 
-  int? _parseYear(String value) {
+  String _normalizeDate(String value) {
     final text = value.trim();
-    if (text.isEmpty) return null;
-    return int.tryParse(text);
+    if (text.isEmpty) return '';
+
+    try {
+      // dd/MM/yyyy
+      if (text.contains('/')) {
+        final parts = text.split('/');
+        if (parts.length == 3) {
+          final day = int.parse(parts[0]);
+          final month = int.parse(parts[1]);
+          final year = int.parse(parts[2]);
+
+          if (day < 1 || day > 31 || month < 1 || month > 12) return text;
+
+          return DateFormat('yyyy-MM-dd').format(DateTime(year, month, day));
+        }
+      }
+
+      // yyyy-MM-dd
+      if (RegExp(r'^\d{4}-\d{1,2}-\d{1,2}$').hasMatch(text)) {
+        final parts = text.split('-');
+        final year = int.parse(parts[0]);
+        final month = int.parse(parts[1]);
+        final day = int.parse(parts[2]);
+
+        return DateFormat('yyyy-MM-dd').format(DateTime(year, month, day));
+      }
+
+      // Excel serial date
+      final serial = double.tryParse(text);
+      if (serial != null && serial > 20000 && serial < 60000) {
+        final base = DateTime(1899, 12, 30);
+        final dt = base.add(Duration(days: serial.floor()));
+        return DateFormat('yyyy-MM-dd').format(dt);
+      }
+    } catch (_) {}
+
+    return text;
+  }
+
+  String _normalizeTime(String value) {
+    final text = value.trim();
+    if (text.isEmpty) return '';
+
+    final parts = text.split(':');
+    if (parts.length >= 2) {
+      final h = int.tryParse(parts[0]) ?? 0;
+      final m = int.tryParse(parts[1]) ?? 0;
+      return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';
+    }
+
+    final number = double.tryParse(text);
+    if (number != null && number > 0 && number < 1) {
+      final totalMinutes = (number * 24 * 60).round();
+      final h = totalMinutes ~/ 60;
+      final m = totalMinutes % 60;
+      return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';
+    }
+
+    return text;
   }
 
   Future<void> _pickExcelFile() async {
     setState(() {
       _loading = true;
       _result = null;
+      _rows = [];
     });
 
     try {
@@ -72,7 +156,7 @@ class _AdminImportUsersScreenState extends State<AdminImportUsersScreen> {
         throw Exception('File Excel không có sheet dữ liệu');
       }
 
-      final parsedRows = <ImportUserRow>[];
+      final parsedRows = <ImportExamRow>[];
 
       for (int i = 1; i < sheet.rows.length; i++) {
         final row = sheet.rows[i];
@@ -82,89 +166,66 @@ class _AdminImportUsersScreenState extends State<AdminImportUsersScreen> {
           return _cellToString(row[index]);
         }
 
-        final fullName = get(0);
-        final email = get(1).toLowerCase();
-        final role = get(2).toLowerCase();
-        final loginProvider = get(3).toLowerCase().isEmpty
-            ? 'google'
-            : get(3).toLowerCase();
-        final password = get(4);
-        final phoneNumber = get(5);
-        final address = get(6);
-        final majorId = get(7);
-        final department = get(8);
-        final studentCode = get(9);
-        final year = _parseYear(get(10));
-        final className = get(11);
+        final courseCode = get(0);
+        final examDate = _normalizeDate(get(1));
+        final examTime = _normalizeTime(get(2));
+        final examRoom = get(3);
+        final note = get(4);
 
-        if (fullName.isEmpty && email.isEmpty) {
+        if (courseCode.isEmpty &&
+            examDate.isEmpty &&
+            examTime.isEmpty &&
+            examRoom.isEmpty &&
+            note.isEmpty) {
           continue;
         }
 
         final errors = <String>[];
 
-        if (fullName.isEmpty) errors.add('Thiếu họ tên');
-        if (email.isEmpty || !email.contains('@'))
-          errors.add('Email không hợp lệ');
-
-        if (!['student', 'teacher', 'admin', 'qlsv'].contains(role)) {
-          errors.add('Role phải là student/teacher/admin/qlsv');
-        }
-
-        if (!['google', 'password'].contains(loginProvider)) {
-          errors.add('loginProvider phải là google/password');
-        }
-
-        if (loginProvider == 'password' && password.length < 6) {
-          errors.add('Password tối thiểu 6 ký tự');
-        }
-
-        if ((role == 'student' || role == 'teacher') && majorId.isEmpty) {
-          errors.add('Thiếu majorId');
-        }
-
-        if (role == 'student') {
-          if (studentCode.isEmpty) errors.add('Thiếu mã sinh viên');
-          if (year == null) errors.add('Thiếu năm học');
-          if (className.isEmpty) errors.add('Thiếu lớp hành chính');
-        }
+        if (courseCode.isEmpty) errors.add('Thiếu mã môn học');
+        if (examDate.isEmpty) errors.add('Thiếu ngày thi');
+        if (examTime.isEmpty) errors.add('Thiếu giờ thi');
+        if (examRoom.isEmpty) errors.add('Thiếu phòng thi');
 
         parsedRows.add(
-          ImportUserRow(
+          ImportExamRow(
             rowNumber: i + 1,
-            fullName: fullName,
-            email: email,
-            role: role,
-            loginProvider: loginProvider,
-            password: password,
-            phoneNumber: phoneNumber,
-            address: address,
-            majorId: majorId,
-            department: department,
-            studentCode: studentCode,
-            year: year,
-            className: className,
+            courseCode: courseCode,
+            courseId: '',
+            courseName: '',
+            semesterId: '',
+            examDate: examDate,
+            examTime: examTime,
+            examRoom: examRoom,
+            note: note,
             errors: errors,
           ),
         );
       }
 
-      final checkResult = await _repo.checkImportUsers(
-        users: parsedRows.map((e) => e.toPayload()).toList(),
+      final checkResult = await _repo.checkImportExamSchedules(
+        rows: parsedRows.map((e) => e.toPayload()).toList(),
       );
 
-      final checkMap = {
-        for (final item in checkResult)
-          (item['email'] ?? '').toString().toLowerCase(): item,
-      };
+      final serverRows = List<Map<String, dynamic>>.from(
+        ((checkResult['results'] ?? []) as List).map(
+          (e) => Map<String, dynamic>.from(e as Map),
+        ),
+      );
 
-      final checkedRows = parsedRows.map((row) {
-        final item = checkMap[row.email.toLowerCase()];
-        final serverErrors = item == null
-            ? <String>[]
-            : List<String>.from(item['errors'] ?? []);
-
-        return row.copyWith(errors: [...row.errors, ...serverErrors]);
+      final checkedRows = serverRows.map((item) {
+        return ImportExamRow(
+          rowNumber: int.tryParse((item['rowNumber'] ?? '').toString()) ?? 0,
+          courseCode: (item['courseCode'] ?? '').toString(),
+          courseId: (item['courseId'] ?? '').toString(),
+          courseName: (item['courseName'] ?? '').toString(),
+          semesterId: (item['semesterId'] ?? '').toString(),
+          examDate: (item['examDate'] ?? '').toString(),
+          examTime: (item['examTime'] ?? '').toString(),
+          examRoom: (item['examRoom'] ?? '').toString(),
+          note: (item['note'] ?? '').toString(),
+          errors: List<String>.from(item['errors'] ?? []),
+        );
       }).toList();
 
       setState(() {
@@ -178,14 +239,14 @@ class _AdminImportUsersScreenState extends State<AdminImportUsersScreen> {
     }
   }
 
-  List<Map<String, dynamic>> _validUsersPayload() {
+  List<Map<String, dynamic>> _validRowsPayload() {
     return _rows.where((r) => r.isValid).map((r) => r.toPayload()).toList();
   }
 
-  Future<void> _importUsers() async {
-    final validUsers = _validUsersPayload();
+  Future<void> _importExamSchedules() async {
+    final validRows = _validRowsPayload();
 
-    if (validUsers.isEmpty) {
+    if (validRows.isEmpty) {
       _show('Không có dòng hợp lệ để import');
       return;
     }
@@ -196,7 +257,7 @@ class _AdminImportUsersScreenState extends State<AdminImportUsersScreen> {
     });
 
     try {
-      final result = await _repo.importUsers(users: validUsers);
+      final result = await _repo.importExamSchedules(rows: validRows);
 
       if (!mounted) return;
 
@@ -205,7 +266,7 @@ class _AdminImportUsersScreenState extends State<AdminImportUsersScreen> {
         _importing = false;
       });
 
-      _show('Import hoàn tất');
+      _show('Import lịch thi hoàn tất');
       Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) return;
@@ -216,6 +277,15 @@ class _AdminImportUsersScreenState extends State<AdminImportUsersScreen> {
 
   void _show(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  String _displayExamDate(String value) {
+    if (value.isEmpty) return '--';
+
+    final dt = DateTime.tryParse(value);
+    if (dt == null) return value;
+
+    return DateFormat('dd/MM/yyyy HH:mm').format(dt.toLocal());
   }
 
   @override
@@ -230,7 +300,7 @@ class _AdminImportUsersScreenState extends State<AdminImportUsersScreen> {
         elevation: 0,
         iconTheme: const IconThemeData(color: _primary),
         title: const Text(
-          'Import người dùng từ Excel',
+          'Import lịch thi',
           style: TextStyle(
             color: Color(0xFF0F172A),
             fontWeight: FontWeight.w900,
@@ -264,11 +334,29 @@ class _AdminImportUsersScreenState extends State<AdminImportUsersScreen> {
                         ),
                         const SizedBox(height: 8),
                         const Text(
-                          'fullName | email | role | loginProvider | password | phoneNumber | address | majorId | department | studentCode | year | className',
+                          'courseCode | examDate | examTime | examRoom | note',
                           style: TextStyle(
                             color: Color(0xFF64748B),
                             height: 1.4,
                             fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Ví dụ: CT101 | 20/06/2026 | 08:00 | P301 | Thi cuối kỳ',
+                          style: TextStyle(
+                            color: Color(0xFF64748B),
+                            height: 1.4,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Lưu ý: Mỗi môn trong học kỳ chỉ được có một lịch thi.',
+                          style: TextStyle(
+                            color: Color(0xFFDC2626),
+                            height: 1.4,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
                         const SizedBox(height: 14),
@@ -325,13 +413,11 @@ class _AdminImportUsersScreenState extends State<AdminImportUsersScreen> {
                 ],
               ),
             ),
-
             if (_result != null)
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
                 child: _ResultBox(result: _result!),
               ),
-
             Expanded(
               child: _rows.isEmpty
                   ? const Center(
@@ -348,12 +434,13 @@ class _AdminImportUsersScreenState extends State<AdminImportUsersScreen> {
                       itemCount: _rows.length,
                       separatorBuilder: (_, __) => const SizedBox(height: 10),
                       itemBuilder: (context, index) {
-                        final row = _rows[index];
-                        return _ImportRowCard(row: row);
+                        return _ImportRowCard(
+                          row: _rows[index],
+                          displayDate: _displayExamDate,
+                        );
                       },
                     ),
             ),
-
             if (_rows.isNotEmpty)
               Container(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
@@ -367,7 +454,7 @@ class _AdminImportUsersScreenState extends State<AdminImportUsersScreen> {
                   child: FilledButton.icon(
                     onPressed: _importing || validCount == 0
                         ? null
-                        : _importUsers,
+                        : _importExamSchedules,
                     style: FilledButton.styleFrom(
                       backgroundColor: _primary,
                       shape: RoundedRectangleBorder(
@@ -383,11 +470,11 @@ class _AdminImportUsersScreenState extends State<AdminImportUsersScreen> {
                               color: Colors.white,
                             ),
                           )
-                        : const Icon(Icons.group_add_rounded),
+                        : const Icon(Icons.save_alt_rounded),
                     label: Text(
                       _importing
                           ? 'Đang import...'
-                          : 'Import $validCount người dùng hợp lệ',
+                          : 'Import $validCount dòng hợp lệ',
                       style: const TextStyle(
                         fontWeight: FontWeight.w900,
                         fontSize: 15,
@@ -403,79 +490,41 @@ class _AdminImportUsersScreenState extends State<AdminImportUsersScreen> {
   }
 }
 
-class ImportUserRow {
+class ImportExamRow {
   final int rowNumber;
-  final String fullName;
-  final String email;
-  final String role;
-  final String loginProvider;
-  final String password;
-  final String phoneNumber;
-  final String address;
-  final String majorId;
-  final String department;
-  final String studentCode;
-  final int? year;
-  final String className;
+  final String courseCode;
+  final String courseId;
+  final String courseName;
+  final String semesterId;
+  final String examDate;
+  final String examTime;
+  final String examRoom;
+  final String note;
   final List<String> errors;
 
-  const ImportUserRow({
+  const ImportExamRow({
     required this.rowNumber,
-    required this.fullName,
-    required this.email,
-    required this.role,
-    required this.loginProvider,
-    required this.password,
-    required this.phoneNumber,
-    required this.address,
-    required this.majorId,
-    required this.department,
-    required this.studentCode,
-    required this.year,
-    required this.className,
+    required this.courseCode,
+    required this.courseId,
+    required this.courseName,
+    required this.semesterId,
+    required this.examDate,
+    required this.examTime,
+    required this.examRoom,
+    required this.note,
     required this.errors,
   });
 
   bool get isValid => errors.isEmpty;
 
-  ImportUserRow copyWith({List<String>? errors}) {
-    return ImportUserRow(
-      rowNumber: rowNumber,
-      fullName: fullName,
-      email: email,
-      role: role,
-      loginProvider: loginProvider,
-      password: password,
-      phoneNumber: phoneNumber,
-      address: address,
-      majorId: majorId,
-      department: department,
-      studentCode: studentCode,
-      year: year,
-      className: className,
-      errors: errors ?? this.errors,
-    );
-  }
-
   Map<String, dynamic> toPayload() {
     return {
-      'fullName': fullName,
-      'email': email,
-      'role': role,
-      'loginProvider': loginProvider,
-      if (password.isNotEmpty) 'password': password,
-      'phoneNumber': phoneNumber,
-      'address': address,
-      'majorId': majorId,
-      'department': department,
-      if (role == 'student')
-        'studentInfo': {
-          'studentCode': studentCode,
-          'year': year,
-          'className': className,
-          'majorId': majorId,
-        },
-      if (role == 'teacher') 'teacherInfo': {'majorId': majorId},
+      'rowNumber': rowNumber,
+      'courseCode': courseCode,
+      'examDate': examDate,
+      'examTime': examTime,
+      'examRoom': examRoom,
+      'note': note,
     };
   }
 }
@@ -525,9 +574,10 @@ class _SummaryCard extends StatelessWidget {
 }
 
 class _ImportRowCard extends StatelessWidget {
-  final ImportUserRow row;
+  final ImportExamRow row;
+  final String Function(String) displayDate;
 
-  const _ImportRowCard({required this.row});
+  const _ImportRowCard({required this.row, required this.displayDate});
 
   @override
   Widget build(BuildContext context) {
@@ -546,7 +596,7 @@ class _ImportRowCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Dòng ${row.rowNumber}: ${row.fullName}',
+            'Dòng ${row.rowNumber}: ${row.courseCode}',
             style: const TextStyle(
               fontWeight: FontWeight.w900,
               fontSize: 15,
@@ -555,12 +605,27 @@ class _ImportRowCard extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            '${row.email} • ${row.role} • ${row.loginProvider}',
+            row.courseName.isEmpty ? 'Chưa xác định môn học' : row.courseName,
             style: const TextStyle(
               color: Color(0xFF64748B),
               fontWeight: FontWeight.w600,
             ),
           ),
+          const SizedBox(height: 6),
+          Text(
+            'Thời gian: ${displayDate(row.examDate)} • Phòng: ${row.examRoom.isEmpty ? '--' : row.examRoom}',
+            style: const TextStyle(
+              color: Color(0xFF334155),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          if (row.note.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Ghi chú: ${row.note}',
+              style: const TextStyle(color: Color(0xFF64748B)),
+            ),
+          ],
           if (row.errors.isNotEmpty) ...[
             const SizedBox(height: 8),
             ...row.errors.map(
@@ -586,10 +651,9 @@ class _ResultBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final created = result['created'] ?? 0;
-    final pending = result['pending'] ?? 0;
+    final success = result['success'] ?? 0;
     final failed = result['failed'] ?? 0;
-    final duplicate = result['duplicate'] ?? 0;
+    final invalid = result['invalid'] ?? 0;
 
     return Container(
       width: double.infinity,
@@ -600,7 +664,7 @@ class _ResultBox extends StatelessWidget {
         border: Border.all(color: const Color(0xFFBFDBFE)),
       ),
       child: Text(
-        'Kết quả: tạo trực tiếp $created, chờ Google $pending, trùng email $duplicate, lỗi $failed',
+        'Kết quả: tạo thành công $success, lỗi $failed, không hợp lệ $invalid',
         style: const TextStyle(
           fontWeight: FontWeight.w900,
           color: Color(0xFF1E3A8A),

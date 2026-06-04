@@ -1,23 +1,20 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
-import 'teacher_classes_screen.dart';
-import 'teacher_home_screen.dart';
-import 'teacher_schedule_screen.dart';
 import '../../auth/views/welcome_screen.dart';
 import '../../../core/services/push_notification_service.dart';
-import 'teacher_profile_screen.dart';
+import 'qlsv_profile_screen.dart';
 
-class TeacherSettingsScreen extends StatefulWidget {
+class QlsvSettingsScreen extends StatefulWidget {
   final Map<String, dynamic> profile;
 
-  const TeacherSettingsScreen({super.key, required this.profile});
+  const QlsvSettingsScreen({super.key, required this.profile});
 
   @override
-  State<TeacherSettingsScreen> createState() => _TeacherSettingsScreenState();
+  State<QlsvSettingsScreen> createState() => _QlsvSettingsScreenState();
 }
 
-class _TeacherSettingsScreenState extends State<TeacherSettingsScreen> {
+class _QlsvSettingsScreenState extends State<QlsvSettingsScreen> {
   bool _isLoggingOut = false;
 
   Future<void> _logout(BuildContext context) async {
@@ -171,60 +168,19 @@ class _TeacherSettingsScreenState extends State<TeacherSettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final fullName = (widget.profile['fullName'] ?? 'Giảng viên').toString();
+    final fullName = (widget.profile['fullName'] ?? 'QLSV').toString();
     final avatarUrl = (widget.profile['avatarUrl'] ?? '').toString();
     final email = (widget.profile['email'] ?? '').toString();
 
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FB),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: 3,
-        onDestinationSelected: (index) {
-          if (index == 0) {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(
-                builder: (_) => TeacherHomeScreen(profile: widget.profile),
-              ),
-            );
-          } else if (index == 1) {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(
-                builder: (_) => TeacherScheduleScreen(profile: widget.profile),
-              ),
-            );
-          } else if (index == 2) {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(
-                builder: (_) => TeacherClassesScreen(profile: widget.profile),
-              ),
-            );
-          }
-        },
-        destinations: const [
-          NavigationDestination(icon: Icon(Icons.home_rounded), label: 'Home'),
-          NavigationDestination(
-            icon: Icon(Icons.calendar_month_rounded),
-            label: 'Schedule',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.menu_book_rounded),
-            label: 'Classes',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.settings_rounded),
-            label: 'Setting',
-          ),
-        ],
-      ),
       appBar: AppBar(
         backgroundColor: const Color(0xFFF5F7FB),
         elevation: 0,
         surfaceTintColor: Colors.transparent,
+        automaticallyImplyLeading: false,
         title: const Text(
-          'Setting',
+          'Cài đặt',
           style: TextStyle(
             color: Color(0xFF0F172A),
             fontWeight: FontWeight.w900,
@@ -293,7 +249,7 @@ class _TeacherSettingsScreenState extends State<TeacherSettingsScreen> {
                 child: ListTile(
                   leading: const Icon(
                     Icons.person_rounded,
-                    color: Color(0xFF7C3AED),
+                    color: Color(0xFF1B2A8A),
                   ),
                   title: const Text(
                     'Thông tin cá nhân',
@@ -308,7 +264,7 @@ class _TeacherSettingsScreenState extends State<TeacherSettingsScreen> {
                       context,
                       MaterialPageRoute(
                         builder: (_) =>
-                            TeacherProfileScreen(profile: widget.profile),
+                            QlsvProfileScreen(profile: widget.profile),
                       ),
                     );
                   },
