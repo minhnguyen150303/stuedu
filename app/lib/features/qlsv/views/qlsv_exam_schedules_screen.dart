@@ -28,6 +28,7 @@ class _QlsvExamSchedulesScreenState extends State<QlsvExamSchedulesScreen> {
   List<Map<String, dynamic>> _semesters = [];
   List<Map<String, dynamic>> _examSchedules = [];
   List<Map<String, dynamic>> _classes = [];
+  String _statusFilter = 'all'; // all | upcoming | finished
 
   @override
   void initState() {
@@ -113,6 +114,38 @@ class _QlsvExamSchedulesScreenState extends State<QlsvExamSchedulesScreen> {
   DateTime? _parseDate(dynamic value) {
     if (value == null) return null;
     return DateTime.tryParse(value.toString())?.toLocal();
+  }
+
+  bool _isExamFinished(dynamic value) {
+    final dt = _parseDate(value);
+    if (dt == null) return false;
+    return dt.isBefore(DateTime.now());
+  }
+
+  String _examStatusText(dynamic value) {
+    return _isExamFinished(value) ? 'Đã thi' : 'Chưa thi';
+  }
+
+  Color _examStatusColor(dynamic value) {
+    return _isExamFinished(value)
+        ? const Color(0xFF64748B)
+        : const Color(0xFF16A34A);
+  }
+
+  List<Map<String, dynamic>> get _filteredExamSchedules {
+    if (_statusFilter == 'finished') {
+      return _examSchedules
+          .where((e) => _isExamFinished(e['examDate']))
+          .toList();
+    }
+
+    if (_statusFilter == 'upcoming') {
+      return _examSchedules
+          .where((e) => !_isExamFinished(e['examDate']))
+          .toList();
+    }
+
+    return _examSchedules;
   }
 
   Map<String, dynamic>? _findSemesterByCourse(String courseId) {
@@ -626,6 +659,51 @@ class _QlsvExamSchedulesScreenState extends State<QlsvExamSchedulesScreen> {
     }
   }
 
+  Widget _buildStatusFilterBar() {
+    final total = _examSchedules.length;
+    final upcoming = _examSchedules
+        .where((e) => !_isExamFinished(e['examDate']))
+        .length;
+    final finished = _examSchedules
+        .where((e) => _isExamFinished(e['examDate']))
+        .length;
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      padding: const EdgeInsets.all(5),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Row(
+        children: [
+          _StatusFilterChip(
+            text: 'Tất cả',
+            count: total,
+            selected: _statusFilter == 'all',
+            color: _primary,
+            onTap: () => setState(() => _statusFilter = 'all'),
+          ),
+          _StatusFilterChip(
+            text: 'Chưa thi',
+            count: upcoming,
+            selected: _statusFilter == 'upcoming',
+            color: const Color(0xFF16A34A),
+            onTap: () => setState(() => _statusFilter = 'upcoming'),
+          ),
+          _StatusFilterChip(
+            text: 'Đã thi',
+            count: finished,
+            selected: _statusFilter == 'finished',
+            color: const Color(0xFF64748B),
+            onTap: () => setState(() => _statusFilter = 'finished'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -695,37 +773,55 @@ class _QlsvExamSchedulesScreenState extends State<QlsvExamSchedulesScreen> {
             )
           : RefreshIndicator(
               onRefresh: _loadData,
-              child: _examSchedules.isEmpty
-                  ? ListView(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      padding: const EdgeInsets.all(16),
-                      children: const [
-                        _EmptyCard(message: 'Chưa có lịch thi nào'),
-                      ],
-                    )
-                  : ListView.separated(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 90),
-                      itemCount: _examSchedules.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 12),
-                      itemBuilder: (context, index) {
-                        final item = _examSchedules[index];
+              child: Column(
+                children: [
+                  _buildStatusFilterBar(),
+                  Expanded(
+                    child: _filteredExamSchedules.isEmpty
+                        ? ListView(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            padding: const EdgeInsets.all(16),
+                            children: [
+                              _EmptyCard(
+                                message: _statusFilter == 'upcoming'
+                                    ? 'Không có lịch thi chưa thi'
+                                    : _statusFilter == 'finished'
+                                    ? 'Không có lịch thi đã thi'
+                                    : 'Chưa có lịch thi nào',
+                              ),
+                            ],
+                          )
+                        : ListView.separated(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            padding: const EdgeInsets.fromLTRB(16, 16, 16, 90),
+                            itemCount: _filteredExamSchedules.length,
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(height: 12),
+                            itemBuilder: (context, index) {
+                              final item = _filteredExamSchedules[index];
 
-                        final courseId = (item['courseId'] ?? '').toString();
-                        final semesterId = (item['semesterId'] ?? '')
-                            .toString();
+                              final courseId = (item['courseId'] ?? '')
+                                  .toString();
+                              final semesterId = (item['semesterId'] ?? '')
+                                  .toString();
 
-                        return _ExamCard(
-                          courseName: _courseName(courseId),
-                          semesterName: _semesterName(semesterId),
-                          examDate: _formatDateTime(item['examDate']),
-                          room: (item['examRoom'] ?? '').toString(),
-                          note: (item['note'] ?? '').toString(),
-                          onEdit: () => _showExamScheduleForm(item: item),
-                          onDelete: () => _deleteExamSchedule(item),
-                        );
-                      },
-                    ),
+                              return _ExamCard(
+                                courseName: _courseName(courseId),
+                                semesterName: _semesterName(semesterId),
+                                examDate: _formatDateTime(item['examDate']),
+                                room: (item['examRoom'] ?? '').toString(),
+                                note: (item['note'] ?? '').toString(),
+                                statusText: _examStatusText(item['examDate']),
+                                statusColor: _examStatusColor(item['examDate']),
+                                isFinished: _isExamFinished(item['examDate']),
+                                onEdit: () => _showExamScheduleForm(item: item),
+                                onDelete: () => _deleteExamSchedule(item),
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
             ),
     );
   }
@@ -737,6 +833,9 @@ class _ExamCard extends StatelessWidget {
   final String examDate;
   final String room;
   final String note;
+  final String statusText;
+  final Color statusColor;
+  final bool isFinished;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
@@ -748,6 +847,9 @@ class _ExamCard extends StatelessWidget {
     required this.note,
     required this.onEdit,
     required this.onDelete,
+    required this.statusText,
+    required this.statusColor,
+    required this.isFinished,
   });
 
   @override
@@ -755,16 +857,38 @@ class _ExamCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isFinished ? const Color(0xFFF8FAFC) : Colors.white,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.black12),
+        border: Border.all(
+          color: isFinished ? const Color(0xFFE2E8F0) : const Color(0xFFBBF7D0),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(Icons.event_rounded, color: Color(0xFF1B2A8A)),
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: statusColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(
+                  isFinished
+                      ? Icons.event_available_rounded
+                      : Icons.event_note_rounded,
+                  color: statusColor,
+                ),
+              ),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
@@ -776,6 +900,26 @@ class _ExamCard extends StatelessWidget {
                   ),
                 ),
               ),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: statusColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: statusColor.withOpacity(0.22)),
+                ),
+                child: Text(
+                  statusText,
+                  style: TextStyle(
+                    color: statusColor,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
               PopupMenuButton<String>(
                 onSelected: (value) {
                   if (value == 'edit') onEdit();
@@ -839,6 +983,61 @@ class _EmptyCard extends StatelessWidget {
         style: const TextStyle(
           color: Colors.black54,
           fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+
+class _StatusFilterChip extends StatelessWidget {
+  final String text;
+  final int count;
+  final bool selected;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _StatusFilterChip({
+    required this.text,
+    required this.count,
+    required this.selected,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(vertical: 11),
+          decoration: BoxDecoration(
+            color: selected ? color : Colors.transparent,
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Column(
+            children: [
+              Text(
+                '$count',
+                style: TextStyle(
+                  color: selected ? Colors.white : color,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                text,
+                style: TextStyle(
+                  color: selected ? Colors.white : const Color(0xFF64748B),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

@@ -68,6 +68,13 @@ function mapSubmissionDoc(doc, student = null) {
         submittedAt: toISOStringSafe(data.submittedAt),
         updatedAt: toISOStringSafe(data.updatedAt),
 
+        assignmentScore:
+            data.assignmentScore === undefined || data.assignmentScore === null
+                ? null
+                : Number(data.assignmentScore),
+        gradedAt: toISOStringSafe(data.gradedAt),
+        gradedBy: data.gradedBy || null,
+
         file,
 
         student: student
@@ -326,7 +333,7 @@ async function listAssignments(query = {}, currentUser = null) {
 async function updateAssignment(id, data) {
     const ref = db.collection("assignments").doc(id);
     const snap = await ref.get();
-    const assignmentIds = snap.docs.map((doc) => doc.id);
+    // const assignmentIds = snap.docs.map((doc) => doc.id);
 
     if (!snap.exists) {
         const err = new Error("Assignment not found");
@@ -538,10 +545,87 @@ async function submitAssignment({ assignmentId, studentId, file }) {
     };
 }
 
+async function gradeAssignmentSubmission({
+    assignmentId,
+    studentId,
+    teacherId,
+    assignmentScore,
+}) {
+    const score = Number(assignmentScore);
+
+    if (Number.isNaN(score) || score < 0 || score > 10) {
+        const err = new Error("Điểm bài tập phải từ 0 đến 10");
+        err.statusCode = 400;
+        throw err;
+    }
+
+    const assignmentSnap = await db.collection("assignments").doc(assignmentId).get();
+
+    if (!assignmentSnap.exists) {
+        const err = new Error("Assignment not found");
+        err.statusCode = 404;
+        throw err;
+    }
+
+    const assignment = assignmentSnap.data() || {};
+    const classId = (assignment.classId || "").toString();
+
+    if (!classId) {
+        const err = new Error("Assignment missing classId");
+        err.statusCode = 409;
+        throw err;
+    }
+
+    const classSnap = await db.collection("classes").doc(classId).get();
+
+    if (!classSnap.exists) {
+        const err = new Error("Class not found");
+        err.statusCode = 404;
+        throw err;
+    }
+
+    const cls = classSnap.data() || {};
+
+    if ((cls.teacherId || "").toString() !== teacherId) {
+        const err = new Error("Bạn không phải giáo viên của lớp này");
+        err.statusCode = 403;
+        throw err;
+    }
+
+    const submissionSnap = await db
+        .collection("assignment_submissions")
+        .where("assignmentId", "==", assignmentId)
+        .where("studentId", "==", studentId)
+        .limit(1)
+        .get();
+
+    if (submissionSnap.empty) {
+        const err = new Error("Sinh viên chưa nộp bài");
+        err.statusCode = 404;
+        throw err;
+    }
+
+    const doc = submissionSnap.docs[0];
+
+    await doc.ref.set(
+        {
+            assignmentScore: score,
+            gradedAt: new Date(),
+            gradedBy: teacherId,
+            updatedAt: new Date(),
+        },
+        { merge: true }
+    );
+
+    const after = await doc.ref.get();
+    return mapSubmissionDoc(after);
+}
+
 module.exports = {
     createAssignment,
     listAssignments,
     updateAssignment,
     deleteAssignment,
     submitAssignment,
+    gradeAssignmentSubmission,
 };

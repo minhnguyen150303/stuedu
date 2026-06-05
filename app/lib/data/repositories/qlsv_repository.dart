@@ -28,12 +28,50 @@ class QlsvRepository {
   Future<Map<String, dynamic>> createNotificationCampaign({
     required String title,
     required String body,
+    String targetType = 'all',
+    List<String> targetRoles = const [],
+    List<String> targetUserIds = const [],
+    List<String> targetClassIds = const [],
   }) async {
     await _attachToken();
+
     final data = await api.post(
       '/notification-campaigns',
-      data: {'title': title, 'body': body},
+      data: {
+        'title': title,
+        'body': body,
+        'targetType': targetType,
+        'targetRoles': targetRoles,
+        'targetUserIds': targetUserIds,
+        'targetClassIds': targetClassIds,
+      },
     );
+
+    return Map<String, dynamic>.from(data as Map);
+  }
+
+  Future<Map<String, dynamic>> getUsers({
+    String? q,
+    String? role,
+    String? majorId,
+    int? yearNumber,
+    int page = 1,
+    int limit = 10,
+  }) async {
+    await _attachToken();
+
+    final data = await api.get(
+      '/admin/users',
+      queryParameters: {
+        'q': q,
+        'role': role,
+        'majorId': majorId,
+        'yearNumber': yearNumber,
+        'page': page,
+        'limit': limit,
+      }..removeWhere((key, value) => value == null || value == ''),
+    );
+
     return Map<String, dynamic>.from(data as Map);
   }
 

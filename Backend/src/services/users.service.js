@@ -694,6 +694,199 @@ async function updateMyProfile(uid, patch) {
     };
 }
 
+function tenToFourForAdmin(totalTen) {
+    const score = Number(totalTen || 0);
+
+    if (score >= 8.5) return 4.0;
+    if (score >= 8.0) return 3.5;
+    if (score >= 7.0) return 3.0;
+    if (score >= 6.5) return 2.5;
+    if (score >= 5.5) return 2.0;
+    if (score >= 5.0) return 1.5;
+    if (score >= 4.0) return 1.0;
+    return 0.0;
+}
+
+function roundForAdmin(value, digits = 2) {
+    const factor = Math.pow(10, digits);
+    return Math.round(Number(value || 0) * factor) / factor;
+}
+
+async function getClassMapByIdsForAdmin(classIds = []) {
+    const map = {};
+
+    for (const classId of classIds) {
+        if (!classId || map[classId]) continue;
+
+        const snap = await db.collection("classes").doc(classId).get();
+
+        if (snap.exists) {
+            map[classId] = {
+                id: snap.id,
+                ...snap.data(),
+            };
+        }
+    }
+
+    return map;
+}
+
+async function getCourseMapByIdsForAdmin(courseIds = []) {
+    const map = {};
+
+    for (const courseId of courseIds) {
+        if (!courseId || map[courseId]) continue;
+
+        const snap = await db.collection("courses").doc(courseId).get();
+
+        if (snap.exists) {
+            map[courseId] = {
+                id: snap.id,
+                ...snap.data(),
+            };
+        }
+    }
+
+    return map;
+}
+
+async function getStudentLearningOverviewForAdmin(uid) {
+    const userSnap = await db.collection("users").doc(uid).get();
+
+    if (!userSnap.exists) {
+        const err = new Error("User not found");
+        err.statusCode = 404;
+        throw err;
+    }
+
+    const user = userSnap.data() || {};
+
+    if ((user.role || "").toString() !== "student") {
+        const err = new Error("User is not a student");
+        err.statusCode = 400;
+        throw err;
+    }
+
+    const gradeSnap = await db
+        .collection("grades")
+        .where("studentId", "==", uid)
+        .get();
+
+    const rawGrades = gradeSnap.docs.map((doc) => ({
+        id: doc.id,
+        ...(doc.data() || {}),
+    }));
+
+    const classIds = [
+        ...new Set(
+            rawGrades
+                .map((g) => (g.classId || "").toString())
+                .filter(Boolean)
+        ),
+    ];
+
+    const classMap = await getClassMapByIdsForAdmin(classIds);
+
+    const courseIds = [
+        ...new Set(
+            Object.values(classMap)
+                .map((cls) => (cls.courseId || "").toString())
+                .filter(Boolean)
+        ),
+    ];
+
+    const courseMap = await getCourseMapByIdsForAdmin(courseIds);
+
+    const items = rawGrades.map((grade) => {
+        const classId = (grade.classId || "").toString();
+        const cls = classMap[classId] || {};
+        const course = courseMap[cls.courseId] || {};
+
+        const scoreProcess = Number(grade.scoreProcess || 0);
+        const scoreMid = Number(grade.scoreMid || 0);
+        const scoreFinal = Number(grade.scoreFinal || 0);
+        const totalTen = Number(grade.totalTen || 0);
+        const gpa4 = Number(grade.gpa4 ?? tenToFourForAdmin(totalTen));
+
+        const status = (grade.status || "").toString() ||
+            (totalTen >= 5 ? "Pass" : "Fail");
+
+        return {
+            gradeId: grade.id,
+            classId,
+            classCode: cls.classCode || "",
+            courseId: cls.courseId || "",
+            courseName: course.courseName || cls.courseName || "Chưa rõ môn",
+            courseCode: course.courseCode || "",
+            credits: Number(course.credits || 0),
+            scoreProcess,
+            scoreMid,
+            scoreFinal,
+            totalTen,
+            gpa4,
+            status,
+            updatedAt: toISOStringSafe(grade.updatedAt),
+        };
+    });
+
+    const completedItems = items.filter((x) => Number(x.totalTen || 0) > 0);
+
+    const passedItems = completedItems.filter((x) => {
+        const status = (x.status || "").toString();
+        return status === "Pass" || Number(x.totalTen || 0) >= 5;
+    });
+
+    const failedItems = completedItems.filter((x) => {
+        const status = (x.status || "").toString();
+        return status === "Fail" || Number(x.totalTen || 0) < 5;
+    });
+
+    let totalWeightedGpa = 0;
+    let totalCredits = 0;
+
+    for (const item of completedItems) {
+        const credits = Number(item.credits || 0) > 0 ? Number(item.credits) : 1;
+        totalWeightedGpa += Number(item.gpa4 || 0) * credits;
+        totalCredits += credits;
+    }
+
+    const avgGpa4 = totalCredits > 0
+        ? roundForAdmin(totalWeightedGpa / totalCredits, 2)
+        : 0;
+
+    const avgTotalTen = completedItems.length > 0
+        ? roundForAdmin(
+            completedItems.reduce((sum, x) => sum + Number(x.totalTen || 0), 0) /
+            completedItems.length,
+            2
+        )
+        : 0;
+
+    items.sort((a, b) => {
+        const codeA = (a.courseCode || "").toString();
+        const codeB = (b.courseCode || "").toString();
+
+        if (codeA && codeB) return codeA.localeCompare(codeB);
+
+        return (a.courseName || "").localeCompare(b.courseName || "");
+    });
+
+    return {
+        studentId: uid,
+        studentName: user.fullName || "",
+        studentCode: user.studentInfo?.studentCode || "",
+        summary: {
+            totalSubjects: items.length,
+            completedSubjects: completedItems.length,
+            passedSubjects: passedItems.length,
+            failedSubjects: failedItems.length,
+            avgTotalTen,
+            avgGpa4,
+        },
+        items,
+    };
+}
+
 module.exports = {
     ensureUserProfile,
     updateMySettings,
@@ -712,4 +905,5 @@ module.exports = {
     checkImportUsersByAdmin,
     getMyProfile,
     updateMyProfile,
+    getStudentLearningOverviewForAdmin,
 };

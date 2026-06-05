@@ -29,6 +29,7 @@ class MainActivity : FlutterActivity() {
                 "saveToDownloads" -> {
                     try {
                         val fileName = call.argument<String>("fileName")
+                        val folderName = call.argument<String>("folderName") ?: "StuEdu"
                         val mimeType = call.argument<String>("mimeType")
                         val bytes = call.argument<ByteArray>("bytes")
 
@@ -49,8 +50,8 @@ class MainActivity : FlutterActivity() {
                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                                 put(
                                     MediaStore.Downloads.RELATIVE_PATH,
-                                    Environment.DIRECTORY_DOWNLOADS + "/StuEdu"
-                                )
+                                    Environment.DIRECTORY_DOWNLOADS + "/" + folderName
+                                    )
                                 put(MediaStore.Downloads.IS_PENDING, 1)
                             }
                         }

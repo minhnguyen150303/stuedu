@@ -1,4 +1,12 @@
+import 'dart:io';
+import 'dart:typed_data';
+
+import 'package:excel/excel.dart' as ex;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:open_filex/open_filex.dart';
+import 'package:path_provider/path_provider.dart';
+
 import '../../../../core/config/app_config.dart';
 import '../../../../data/repositories/admin_academic_repository.dart';
 import '../../../../data/sources/remote/api_client.dart';
@@ -19,8 +27,13 @@ class ClassStudentsScreen extends StatefulWidget {
 
 class _ClassStudentsScreenState extends State<ClassStudentsScreen> {
   static const _primary = Color(0xFF1B2A8A);
+  static const MethodChannel _downloadsChannel = MethodChannel(
+    'stu_edu/downloads',
+  );
 
   late final AdminAcademicRepository _repo;
+  late Future<List<Map<String, dynamic>>> _studentsFuture;
+
   final TextEditingController _searchController = TextEditingController();
 
   int _page = 1;
@@ -30,6 +43,7 @@ class _ClassStudentsScreenState extends State<ClassStudentsScreen> {
   void initState() {
     super.initState();
     _repo = AdminAcademicRepository(ApiClient(AppConfig.baseUrl));
+    _studentsFuture = _loadStudents();
   }
 
   @override
@@ -67,7 +81,180 @@ class _ClassStudentsScreenState extends State<ClassStudentsScreen> {
 
   Future<void> _refresh() async {
     if (!mounted) return;
-    setState(() {});
+
+    setState(() {
+      _studentsFuture = _loadStudents();
+    });
+
+    await _studentsFuture;
+  }
+
+  String _safeFileName(String value) {
+    final text = value.trim().isEmpty ? 'khong_ten' : value.trim();
+
+    return text
+        .replaceAll(RegExp(r'[\\/:*?"<>|]'), '_')
+        .replaceAll(RegExp(r'\s+'), '_');
+  }
+
+  String _joinPath(String a, String b) {
+    if (a.endsWith(Platform.pathSeparator)) return '$a$b';
+    return '$a${Platform.pathSeparator}$b';
+  }
+
+  Future<String> _resolveDssvFolderPath() async {
+    Directory baseDir;
+
+    if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
+      final downloadsDir = await getDownloadsDirectory();
+
+      if (downloadsDir == null) {
+        throw Exception('Không tìm thấy thư mục Downloads');
+      }
+
+      baseDir = downloadsDir;
+    } else {
+      baseDir = await getApplicationDocumentsDirectory();
+    }
+
+    final dssvDir = Directory(_joinPath(baseDir.path, 'dssv'));
+
+    if (!await dssvDir.exists()) {
+      await dssvDir.create(recursive: true);
+    }
+
+    return dssvDir.path;
+  }
+
+  Future<void> _exportStudentsToExcel(
+    List<Map<String, dynamic>> students,
+  ) async {
+    if (students.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Không có sinh viên để xuất Excel')),
+      );
+      return;
+    }
+
+    try {
+      final classCode = (widget.classItem['classCode'] ?? '').toString();
+      final safeClassCode = _safeFileName(classCode);
+
+      final courseName =
+          (widget.classItem['courseName'] ??
+                  widget.classItem['course']?['courseName'] ??
+                  widget.classItem['subjectName'] ??
+                  'mon_hoc')
+              .toString();
+
+      final safeCourseName = _safeFileName(courseName);
+
+      final excel = ex.Excel.createExcel();
+
+      const sheetName = 'DSSV';
+      final sheet = excel[sheetName];
+
+      if (excel.sheets.containsKey('Sheet1')) {
+        excel.delete('Sheet1');
+      }
+
+      sheet.appendRow([
+        ex.TextCellValue('STT'),
+        ex.TextCellValue('Mã sinh viên'),
+        ex.TextCellValue('Họ tên'),
+        ex.TextCellValue('Lớp hành chính'),
+        ex.TextCellValue('Email'),
+        ex.TextCellValue('UID'),
+      ]);
+
+      for (int i = 0; i < students.length; i++) {
+        final student = students[i];
+
+        final uid = (student['uid'] ?? '').toString();
+        final fullName = (student['fullName'] ?? '').toString();
+        final email = (student['email'] ?? '').toString();
+        final studentCode = _studentCode(student);
+        final className = _studentClassName(student);
+
+        sheet.appendRow([
+          ex.IntCellValue(i + 1),
+          ex.TextCellValue(studentCode),
+          ex.TextCellValue(fullName),
+          ex.TextCellValue(className),
+          ex.TextCellValue(email),
+          ex.TextCellValue(uid),
+        ]);
+      }
+
+      final bytes = excel.encode();
+
+      if (bytes == null) {
+        throw Exception('Không tạo được file Excel');
+      }
+
+      final fileName = 'dssv_${safeCourseName}_$safeClassCode.xlsx';
+
+      final fileBytes = Uint8List.fromList(bytes);
+
+      if (Platform.isAndroid) {
+        final savedUri = await _saveExcelToAndroidDownloads(
+          bytes: fileBytes,
+          fileName: fileName,
+        );
+
+        if (!mounted) return;
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              savedUri == null || savedUri.isEmpty
+                  ? 'Đã lưu vào Downloads/dssv/$fileName'
+                  : 'Đã lưu vào Downloads/dssv/$fileName',
+            ),
+          ),
+        );
+
+        return;
+      }
+
+      final folderPath = await _resolveDssvFolderPath();
+      final fullPath = _joinPath(folderPath, fileName);
+
+      final file = File(fullPath);
+      await file.writeAsBytes(fileBytes, flush: true);
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Đã lưu file: $fullPath')));
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Lỗi xuất Excel: $e')));
+    }
+  }
+
+  Future<String?> _saveExcelToAndroidDownloads({
+    required Uint8List bytes,
+    required String fileName,
+  }) async {
+    if (!Platform.isAndroid) return null;
+
+    final result = await _downloadsChannel.invokeMethod<String>(
+      'saveToDownloads',
+      {
+        'fileName': fileName,
+        'folderName': 'dssv',
+        'mimeType':
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'bytes': bytes,
+      },
+    );
+
+    return result;
   }
 
   Future<void> _openAddStudentDialog() async {
@@ -360,7 +547,7 @@ class _ClassStudentsScreenState extends State<ClassStudentsScreen> {
             ),
             Expanded(
               child: FutureBuilder<List<Map<String, dynamic>>>(
-                future: _loadStudents(),
+                future: _studentsFuture,
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(child: CircularProgressIndicator());
@@ -370,7 +557,8 @@ class _ClassStudentsScreenState extends State<ClassStudentsScreen> {
                     return Center(child: Text('Lỗi: ${snapshot.error}'));
                   }
 
-                  var students = snapshot.data ?? [];
+                  final allStudents = snapshot.data ?? [];
+                  var students = List<Map<String, dynamic>>.from(allStudents);
                   final q = _searchController.text.trim().toLowerCase();
 
                   if (q.isNotEmpty) {
@@ -429,7 +617,7 @@ class _ClassStudentsScreenState extends State<ClassStudentsScreen> {
                                     ? Icons.archive_rounded
                                     : Icons.school_rounded,
                                 title: adminState == 'archived'
-                                    ? 'Lưu trữ'
+                                    ? 'Đã kết thúc'
                                     : 'Hoạt động',
                                 subtitle: 'Trạng thái lớp',
                                 color: adminState == 'archived'
@@ -449,7 +637,10 @@ class _ClassStudentsScreenState extends State<ClassStudentsScreen> {
                               child: SizedBox(
                                 height: 46,
                                 child: OutlinedButton.icon(
-                                  onPressed: () {},
+                                  onPressed: allStudents.isEmpty
+                                      ? null
+                                      : () =>
+                                            _exportStudentsToExcel(allStudents),
                                   style: OutlinedButton.styleFrom(
                                     foregroundColor: const Color(0xFF334155),
                                     backgroundColor: Colors.white,

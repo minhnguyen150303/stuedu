@@ -505,6 +505,71 @@ class _AssignmentsGroupedTab extends StatelessWidget {
                                       ),
                                     ),
                                   ],
+                                  const SizedBox(height: 8),
+                                  Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 10,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color:
+                                          submission['assignmentScore'] == null
+                                          ? const Color(0xFFFFFBEB)
+                                          : const Color(0xFFF0FDF4),
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(
+                                        color:
+                                            submission['assignmentScore'] ==
+                                                null
+                                            ? const Color(0xFFFDE68A)
+                                            : const Color(0xFFBBF7D0),
+                                      ),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          submission['assignmentScore'] == null
+                                              ? Icons.hourglass_bottom_rounded
+                                              : Icons.check_circle_rounded,
+                                          size: 18,
+                                          color:
+                                              submission['assignmentScore'] ==
+                                                  null
+                                              ? const Color(0xFFD97706)
+                                              : const Color(0xFF16A34A),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            submission['assignmentScore'] ==
+                                                    null
+                                                ? 'Giáo viên chưa chấm điểm bài tập'
+                                                : 'Điểm bài tập: ${submission['assignmentScore']} / 10',
+                                            style: TextStyle(
+                                              color:
+                                                  submission['assignmentScore'] ==
+                                                      null
+                                                  ? const Color(0xFF92400E)
+                                                  : const Color(0xFF15803D),
+                                              fontWeight: FontWeight.w900,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  if (submission['gradedAt'] != null) ...[
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      'Đã chấm lúc: ${_formatDateTimeVi(submission['gradedAt'])}',
+                                      style: const TextStyle(
+                                        color: Color(0xFF64748B),
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
                                 ],
                               ),
                             ),

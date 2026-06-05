@@ -69,7 +69,7 @@ router.post(
 router.post(
     "/:id/students",
     requireAuth,
-    requireRole(["admin"]),
+    requireRole(["admin", "teacher"]),
     validate(validateAdminAddStudent),
     asyncHandler(controller.addStudent)
 );
@@ -77,14 +77,14 @@ router.post(
 router.get(
     "/:id/available-students",
     requireAuth,
-    requireRole(["admin"]),
+    requireRole(["admin", "teacher"]),
     asyncHandler(controller.availableStudents)
 );
 
 router.delete(
     "/:id/students/:studentId",
     requireAuth,
-    requireRole(["admin"]),
+    requireRole(["admin", "teacher"]),
     asyncHandler(controller.removeStudent)
 );
 

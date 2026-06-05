@@ -91,32 +91,21 @@ async function generateClassesForCycle(cycleId, academicStartYear) {
     }
 
     const cycle = cycleSnap.data() || {};
+
     if (cycle.isActive === false || cycle.isManualLocked === true) {
         return { cycleId, skipped: true, reason: "inactive_or_locked" };
     }
 
     const currentAcademicYear = getAcademicYearLabel(academicStartYear);
+    const timeline = resolveCycleTimeline(cycle, academicStartYear);
+    const now = new Date();
 
-    const existing = await db.collection("classes")
-        .where("semesterId", "==", cycleId)
-        .where("academicYearSnapshot", "==", currentAcademicYear)
-        .limit(1)
-        .get();
-
-    if (!existing.empty) {
-        await cycleRef.set(
-            {
-                classesGenerated: true,
-                classesGeneratedAt: new Date(),
-                updatedAt: new Date(),
-            },
-            { merge: true }
-        );
-
+    if (now > timeline.studyEndAt) {
         return {
             cycleId,
             skipped: true,
-            reason: "already_generated",
+            reason: "cycle_finished",
+            academicYear: currentAcademicYear,
         };
     }
 
@@ -132,17 +121,42 @@ async function generateClassesForCycle(cycleId, academicStartYear) {
             cycleId,
             skipped: true,
             reason: "no_lifecycles",
+            academicYear: currentAcademicYear,
         };
     }
 
+    let adminState = "draft";
+    let isVisibleForRegistration = true;
+
+    if (now >= timeline.registrationOpenAt && now <= timeline.studyEndAt) {
+        adminState = "active";
+        isVisibleForRegistration = true;
+    }
+
     const batch = db.batch();
-    let count = 0;
+
+    let generated = 0;
+    let skippedExisting = 0;
 
     for (const doc of lifecycleSnap.docs) {
         const life = doc.data() || {};
+
+        const existingClassSnap = await db.collection("classes")
+            .where("semesterId", "==", cycleId)
+            .where("academicYearSnapshot", "==", currentAcademicYear)
+            .where("sourceLifecycleId", "==", doc.id)
+            .limit(1)
+            .get();
+
+        if (!existingClassSnap.empty) {
+            skippedExisting += 1;
+            continue;
+        }
+
         const newRef = db.collection("classes").doc();
 
         batch.set(newRef, {
+            sourceLifecycleId: doc.id,
             lifecycleId: doc.id,
 
             courseId: life.courseId || "",
@@ -153,9 +167,10 @@ async function generateClassesForCycle(cycleId, academicStartYear) {
             schedule: Array.isArray(life.schedule) ? life.schedule : [],
             maxStudents: Number(life.maxStudents || 0),
 
-            adminState: "draft",
-            isVisibleForRegistration: true,
+            adminState,
+            isVisibleForRegistration,
 
+            majorId: cycle.majorId || "",
             termNumberSnapshot: Number(cycle.termNumber),
             yearNumberSnapshot: Number(cycle.yearNumber),
             academicYearSnapshot: currentAcademicYear,
@@ -165,7 +180,7 @@ async function generateClassesForCycle(cycleId, academicStartYear) {
             archivedAt: null,
         });
 
-        count += 1;
+        generated += 1;
     }
 
     batch.set(
@@ -178,11 +193,22 @@ async function generateClassesForCycle(cycleId, academicStartYear) {
         { merge: true }
     );
 
-    await batch.commit();
+    if (generated > 0) {
+        await batch.commit();
+    } else {
+        await cycleRef.set(
+            {
+                classesGenerated: true,
+                updatedAt: new Date(),
+            },
+            { merge: true }
+        );
+    }
 
     return {
         cycleId,
-        generated: count,
+        generated,
+        skippedExisting,
         academicYear: currentAcademicYear,
     };
 }

@@ -85,8 +85,10 @@ class _QlsvNotificationsScreenState extends State<QlsvNotificationsScreen> {
     final raw = (value ?? '').toString().trim();
     if (raw.isEmpty) return 'Không rõ thời gian';
 
-    final date = DateTime.tryParse(raw);
-    if (date == null) return raw;
+    final parsed = DateTime.tryParse(raw);
+    if (parsed == null) return raw;
+
+    final date = parsed.toLocal();
 
     String two(int n) => n.toString().padLeft(2, '0');
 

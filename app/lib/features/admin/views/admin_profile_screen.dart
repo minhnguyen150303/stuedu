@@ -260,11 +260,11 @@ class _AdminProfileScreenState extends State<AdminProfileScreen> {
                 _Section(
                   title: 'THÔNG TIN TÀI KHOẢN',
                   children: [
-                    _InfoRow(
-                      icon: Icons.fingerprint_rounded,
-                      label: 'User ID',
-                      value: uid,
-                    ),
+                    // _InfoRow(
+                    //   icon: Icons.fingerprint_rounded,
+                    //   label: 'User ID',
+                    //   value: uid,
+                    // ),
                     _InfoRow(
                       icon: Icons.phone_rounded,
                       label: 'Số điện thoại',

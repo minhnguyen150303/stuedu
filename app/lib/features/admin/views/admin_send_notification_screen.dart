@@ -27,6 +27,14 @@ class _AdminSendNotificationsScreenState
 
   final _titleCtrl = TextEditingController();
   final _bodyCtrl = TextEditingController();
+  final _userSearchCtrl = TextEditingController();
+
+  String _targetType = 'all';
+  final List<String> _selectedRoles = [];
+  final List<Map<String, dynamic>> _selectedUsers = [];
+
+  bool _loadingUsers = false;
+  List<Map<String, dynamic>> _userResults = [];
 
   bool _sending = false;
   bool _loadingList = true;
@@ -47,6 +55,7 @@ class _AdminSendNotificationsScreenState
   void dispose() {
     _titleCtrl.dispose();
     _bodyCtrl.dispose();
+    _userSearchCtrl.dispose();
     super.dispose();
   }
 
@@ -78,6 +87,45 @@ class _AdminSendNotificationsScreenState
     }
   }
 
+  Future<void> _searchUsers() async {
+    final q = _userSearchCtrl.text.trim();
+
+    setState(() {
+      _loadingUsers = true;
+    });
+
+    try {
+      final data = await _repo.getUsers(
+        q: q.isEmpty ? null : q,
+        page: 1,
+        limit: 20,
+      );
+
+      final rawItems = data['items'] ?? data['data'] ?? data['users'] ?? [];
+      final items = (rawItems as List)
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
+
+      if (!mounted) return;
+
+      setState(() {
+        _userResults = items;
+        _loadingUsers = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _loadingUsers = false;
+        _userResults = [];
+      });
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Không tải được người dùng: $e')));
+    }
+  }
+
   Future<void> _sendNotification() async {
     final title = _titleCtrl.text.trim();
     final body = _bodyCtrl.text.trim();
@@ -97,9 +145,37 @@ class _AdminSendNotificationsScreenState
       Map<String, dynamic> result;
 
       if (_editingId == null) {
+        final targetUserIds = _selectedUsers
+            .map((e) => (e['uid'] ?? e['id'] ?? '').toString())
+            .where((e) => e.isNotEmpty)
+            .toList();
+
+        if (_targetType == 'role' && _selectedRoles.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Vui lòng chọn ít nhất 1 vai trò')),
+          );
+          setState(() {
+            _sending = false;
+          });
+          return;
+        }
+
+        if (_targetType == 'users' && targetUserIds.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Vui lòng chọn ít nhất 1 người nhận')),
+          );
+          setState(() {
+            _sending = false;
+          });
+          return;
+        }
+
         result = await _repo.createNotificationCampaign(
           title: title,
           body: body,
+          targetType: _targetType,
+          targetRoles: _selectedRoles,
+          targetUserIds: targetUserIds,
         );
       } else {
         result = await _repo.updateNotificationCampaign(
@@ -130,9 +206,14 @@ class _AdminSendNotificationsScreenState
 
       _titleCtrl.clear();
       _bodyCtrl.clear();
+      _userSearchCtrl.clear();
 
       setState(() {
         _editingId = null;
+        _targetType = 'all';
+        _selectedRoles.clear();
+        _selectedUsers.clear();
+        _userResults.clear();
       });
 
       await _loadCampaigns();
@@ -162,9 +243,14 @@ class _AdminSendNotificationsScreenState
   void _cancelEdit() {
     _titleCtrl.clear();
     _bodyCtrl.clear();
+    _userSearchCtrl.clear();
 
     setState(() {
       _editingId = null;
+      _targetType = 'all';
+      _selectedRoles.clear();
+      _selectedUsers.clear();
+      _userResults.clear();
     });
   }
 
@@ -252,8 +338,10 @@ class _AdminSendNotificationsScreenState
     final raw = (value ?? '').toString().trim();
     if (raw.isEmpty) return 'Không rõ thời gian';
 
-    final date = DateTime.tryParse(raw);
-    if (date == null) return raw;
+    final parsed = DateTime.tryParse(raw);
+    if (parsed == null) return raw;
+
+    final date = parsed.toLocal();
 
     String two(int n) => n.toString().padLeft(2, '0');
 
@@ -373,6 +461,223 @@ class _AdminSendNotificationsScreenState
     );
   }
 
+  Widget _buildTargetSelector() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Người nhận',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w900,
+              color: _textDark,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              _TargetChip(
+                label: 'Tất cả',
+                selected: _targetType == 'all',
+                onTap: () {
+                  setState(() {
+                    _targetType = 'all';
+                    _selectedRoles.clear();
+                    _selectedUsers.clear();
+                    _userResults.clear();
+                  });
+                },
+              ),
+              _TargetChip(
+                label: 'Theo vai trò',
+                selected: _targetType == 'role',
+                onTap: () {
+                  setState(() {
+                    _targetType = 'role';
+                    _selectedUsers.clear();
+                    _userResults.clear();
+                  });
+                },
+              ),
+              _TargetChip(
+                label: 'Chọn người',
+                selected: _targetType == 'users',
+                onTap: () {
+                  setState(() {
+                    _targetType = 'users';
+                    _selectedRoles.clear();
+                  });
+                  _searchUsers();
+                },
+              ),
+            ],
+          ),
+          if (_targetType == 'role') ...[
+            const SizedBox(height: 14),
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                _RoleCheckChip(
+                  label: 'Sinh viên',
+                  value: 'student',
+                  selectedValues: _selectedRoles,
+                  onChanged: () => setState(() {}),
+                ),
+                _RoleCheckChip(
+                  label: 'Giảng viên',
+                  value: 'teacher',
+                  selectedValues: _selectedRoles,
+                  onChanged: () => setState(() {}),
+                ),
+                _RoleCheckChip(
+                  label: 'QLSV',
+                  value: 'qlsv',
+                  selectedValues: _selectedRoles,
+                  onChanged: () => setState(() {}),
+                ),
+                _RoleCheckChip(
+                  label: 'Admin',
+                  value: 'admin',
+                  selectedValues: _selectedRoles,
+                  onChanged: () => setState(() {}),
+                ),
+              ],
+            ),
+          ],
+          if (_targetType == 'users') ...[
+            const SizedBox(height: 14),
+            TextField(
+              controller: _userSearchCtrl,
+              onSubmitted: (_) => _searchUsers(),
+              decoration: InputDecoration(
+                hintText: 'Tìm tên, email, mã sinh viên...',
+                prefixIcon: const Icon(Icons.search_rounded),
+                suffixIcon: IconButton(
+                  onPressed: _searchUsers,
+                  icon: const Icon(Icons.arrow_forward_rounded),
+                ),
+                filled: true,
+                fillColor: Colors.white,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 14,
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: const BorderSide(color: _primary, width: 1.3),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            if (_selectedUsers.isNotEmpty) ...[
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: _selectedUsers.map((u) {
+                  final name = (u['fullName'] ?? u['email'] ?? '').toString();
+
+                  return Chip(
+                    label: Text(name),
+                    deleteIcon: const Icon(Icons.close_rounded, size: 18),
+                    onDeleted: () {
+                      setState(() {
+                        _selectedUsers.removeWhere(
+                          (x) =>
+                              (x['uid'] ?? x['id'] ?? '').toString() ==
+                              (u['uid'] ?? u['id'] ?? '').toString(),
+                        );
+                      });
+                    },
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 12),
+            ],
+            if (_loadingUsers)
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else
+              Column(
+                children: _userResults.map((u) {
+                  final uid = (u['uid'] ?? u['id'] ?? '').toString();
+                  final name = (u['fullName'] ?? 'Chưa có tên').toString();
+                  final email = (u['email'] ?? '').toString();
+                  final role = (u['role'] ?? '').toString();
+
+                  final selected = _selectedUsers.any(
+                    (x) => (x['uid'] ?? x['id'] ?? '').toString() == uid,
+                  );
+
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    decoration: BoxDecoration(
+                      color: selected ? const Color(0xFFEDEFF6) : Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: selected ? _primary : const Color(0xFFE2E8F0),
+                      ),
+                    ),
+                    child: ListTile(
+                      onTap: () {
+                        setState(() {
+                          if (selected) {
+                            _selectedUsers.removeWhere(
+                              (x) =>
+                                  (x['uid'] ?? x['id'] ?? '').toString() == uid,
+                            );
+                          } else {
+                            _selectedUsers.add(u);
+                          }
+                        });
+                      },
+                      leading: CircleAvatar(
+                        backgroundColor: const Color(0xFFEDEFF6),
+                        child: Text(
+                          name.isEmpty ? '?' : name[0].toUpperCase(),
+                          style: const TextStyle(
+                            color: _primary,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                      title: Text(
+                        name,
+                        style: const TextStyle(fontWeight: FontWeight.w900),
+                      ),
+                      subtitle: Text('$email • ${_roleLabel(role)}'),
+                      trailing: Icon(
+                        selected
+                            ? Icons.check_circle_rounded
+                            : Icons.radio_button_unchecked_rounded,
+                        color: selected ? _primary : const Color(0xFF94A3B8),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _buildFormCard() {
     return Container(
       padding: const EdgeInsets.all(18),
@@ -473,7 +778,12 @@ class _AdminSendNotificationsScreenState
               icon: Icons.notes_rounded,
             ),
           ),
-          const SizedBox(height: 22),
+          const SizedBox(height: 18),
+          if (!_isEditing) ...[
+            _buildTargetSelector(),
+            const SizedBox(height: 22),
+          ] else
+            const SizedBox(height: 22),
           Row(
             children: [
               Expanded(
@@ -740,6 +1050,10 @@ class _CampaignCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final title = (item['title'] ?? 'Thông báo').toString();
     final body = (item['body'] ?? '').toString();
+    final audienceText = (item['audienceText'] ?? 'Tất cả người dùng')
+        .toString();
+    final receiverCount =
+        int.tryParse((item['receiverCount'] ?? 0).toString()) ?? 0;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -821,6 +1135,57 @@ class _CampaignCard extends StatelessWidget {
             ),
           ],
           const SizedBox(height: 12),
+
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.people_alt_rounded,
+                      size: 16,
+                      color: _primary,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        audienceText,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: _textDark,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                if (receiverCount > 0) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    '$receiverCount người nhận',
+                    style: const TextStyle(
+                      color: _textMuted,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 10),
+
           Row(
             children: [
               const Icon(
@@ -831,7 +1196,7 @@ class _CampaignCard extends StatelessWidget {
               const SizedBox(width: 5),
               Expanded(
                 child: Text(
-                  formatDate(item['createdAt']),
+                  'Gửi lúc: ${formatDate(item['createdAt'])}',
                   style: const TextStyle(
                     color: Color(0xFF94A3B8),
                     fontSize: 12,
@@ -841,6 +1206,7 @@ class _CampaignCard extends StatelessWidget {
               ),
             ],
           ),
+
           const SizedBox(height: 14),
           Row(
             children: [
@@ -882,5 +1248,100 @@ class _CampaignCard extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+class _TargetChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _TargetChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  static const _primary = Color(0xFF1B2A8A);
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(999),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: selected ? _primary : Colors.white,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: selected ? _primary : const Color(0xFFE2E8F0),
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: selected ? Colors.white : const Color(0xFF334155),
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RoleCheckChip extends StatelessWidget {
+  final String label;
+  final String value;
+  final List<String> selectedValues;
+  final VoidCallback onChanged;
+
+  const _RoleCheckChip({
+    required this.label,
+    required this.value,
+    required this.selectedValues,
+    required this.onChanged,
+  });
+
+  static const _primary = Color(0xFF1B2A8A);
+
+  @override
+  Widget build(BuildContext context) {
+    final selected = selectedValues.contains(value);
+
+    return FilterChip(
+      label: Text(label),
+      selected: selected,
+      selectedColor: const Color(0xFFEDEFF6),
+      checkmarkColor: _primary,
+      labelStyle: TextStyle(
+        color: selected ? _primary : const Color(0xFF334155),
+        fontWeight: FontWeight.w900,
+      ),
+      onSelected: (_) {
+        if (selected) {
+          selectedValues.remove(value);
+        } else {
+          selectedValues.add(value);
+        }
+
+        onChanged();
+      },
+    );
+  }
+}
+
+String _roleLabel(String role) {
+  switch (role) {
+    case 'student':
+      return 'Sinh viên';
+    case 'teacher':
+      return 'Giảng viên';
+    case 'qlsv':
+      return 'QLSV';
+    case 'admin':
+      return 'Admin';
+    default:
+      return 'Không rõ';
   }
 }

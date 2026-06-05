@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:developer' as developer;
+import 'dart:ui';
 
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -9,9 +10,62 @@ import '../config/app_config.dart';
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  developer.log(
-    'FCM background message: ${message.messageId}',
-    name: 'PushNotificationService',
+  final local = FlutterLocalNotificationsPlugin();
+
+  const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
+  const initSettings = InitializationSettings(android: androidInit);
+
+  await local.initialize(initSettings);
+
+  const channel = AndroidNotificationChannel(
+    'high_importance_channel',
+    'High Importance Notifications',
+    description: 'StuEdu notifications',
+    importance: Importance.max,
+  );
+
+  await local
+      .resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin
+      >()
+      ?.createNotificationChannel(channel);
+
+  final title =
+      message.notification?.title ??
+      message.data['title']?.toString() ??
+      'StuEdu';
+
+  final body =
+      message.notification?.body ?? message.data['body']?.toString() ?? '';
+
+  if (title.trim().isEmpty && body.trim().isEmpty) return;
+
+  await local.show(
+    DateTime.now().millisecondsSinceEpoch ~/ 1000,
+    title,
+    body,
+    NotificationDetails(
+      android: AndroidNotificationDetails(
+        'high_importance_channel',
+        'High Importance Notifications',
+        channelDescription: 'StuEdu notifications',
+        importance: Importance.max,
+        priority: Priority.high,
+        playSound: true,
+        enableVibration: true,
+        category: AndroidNotificationCategory.message,
+        icon: '@mipmap/ic_launcher',
+        color: const Color(0xFF1B2A8A),
+        ticker: 'Thông báo mới',
+        subText: message.data['subText']?.toString() ?? 'StuEdu',
+        styleInformation: BigTextStyleInformation(
+          body,
+          contentTitle: title,
+          summaryText:
+              message.data['summary']?.toString() ?? 'Thông báo hệ thống',
+        ),
+      ),
+    ),
   );
 }
 
@@ -54,19 +108,38 @@ class PushNotificationService {
 
     FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
       final notification = message.notification;
-      if (notification == null) return;
+
+      final title =
+          notification?.title ?? message.data['title']?.toString() ?? 'StuEdu';
+
+      final body = notification?.body ?? message.data['body']?.toString() ?? '';
+
+      if (title.trim().isEmpty && body.trim().isEmpty) return;
 
       await _local.show(
-        notification.hashCode,
-        notification.title,
-        notification.body,
-        const NotificationDetails(
+        DateTime.now().millisecondsSinceEpoch ~/ 1000,
+        title,
+        body,
+        NotificationDetails(
           android: AndroidNotificationDetails(
             'high_importance_channel',
             'High Importance Notifications',
             channelDescription: 'StuEdu notifications',
             importance: Importance.max,
             priority: Priority.high,
+            playSound: true,
+            enableVibration: true,
+            category: AndroidNotificationCategory.message,
+            icon: '@mipmap/ic_launcher',
+            color: const Color(0xFF1B2A8A),
+            ticker: 'Thông báo mới',
+            subText: message.data['subText']?.toString() ?? 'StuEdu',
+            styleInformation: BigTextStyleInformation(
+              body,
+              contentTitle: title,
+              summaryText:
+                  message.data['summary']?.toString() ?? 'Thông báo hệ thống',
+            ),
           ),
         ),
       );

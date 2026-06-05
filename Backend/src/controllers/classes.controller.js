@@ -1,5 +1,6 @@
 const classService = require("../services/classes.service");
 const enrollmentService = require("../services/enrollments.service");
+const { db } = require("../config/firebase");
 
 async function create(req, res) {
     const result = await classService.createClass(req.body);
@@ -86,6 +87,8 @@ async function toggleVisibility(req, res) {
 }
 
 async function addStudent(req, res) {
+    await assertCanManageClassStudents(req, req.params.id);
+
     const result = await enrollmentService.addStudentToClassByAdmin({
         classId: req.params.id,
         studentId: req.body.studentId,
@@ -101,6 +104,8 @@ async function addStudent(req, res) {
 }
 
 async function availableStudents(req, res) {
+    await assertCanManageClassStudents(req, req.params.id);
+
     const data = await enrollmentService.listAvailableStudentsForClass({
         classId: req.params.id,
         q: req.query.q || "",
@@ -109,7 +114,41 @@ async function availableStudents(req, res) {
     res.json(data);
 }
 
+async function assertCanManageClassStudents(req, classId) {
+    const role = (req.user?.role || "").toString();
+    const uid = (req.user?.uid || "").toString();
+
+    if (role === "admin") {
+        return;
+    }
+
+    if (role !== "teacher") {
+        const err = new Error("Không có quyền quản lý sinh viên lớp này");
+        err.statusCode = 403;
+        throw err;
+    }
+
+    const classSnap = await db.collection("classes").doc(classId).get();
+
+    if (!classSnap.exists) {
+        const err = new Error("Class not found");
+        err.statusCode = 404;
+        throw err;
+    }
+
+    const cls = classSnap.data() || {};
+    const teacherId = (cls.teacherId || "").toString();
+
+    if (teacherId !== uid) {
+        const err = new Error("Bạn chỉ được quản lý sinh viên trong lớp mình dạy");
+        err.statusCode = 403;
+        throw err;
+    }
+}
+
 async function removeStudent(req, res) {
+    await assertCanManageClassStudents(req, req.params.id);
+
     const result = await enrollmentService.removeStudentFromClassByAdmin({
         classId: req.params.id,
         studentId: req.params.studentId,

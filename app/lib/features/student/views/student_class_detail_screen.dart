@@ -508,18 +508,6 @@ class _StudentClassDetailScreenState extends State<StudentClassDetailScreen>
     return result;
   }
 
-  Future<void> _openAndroidDownloadedFile({
-    required String uri,
-    required String mimeType,
-  }) async {
-    if (!Platform.isAndroid) return;
-
-    await _downloadsChannel.invokeMethod('openDownloadedFile', {
-      'uri': uri,
-      'mimeType': mimeType,
-    });
-  }
-
   Future<void> _downloadAttachment(Map<String, dynamic> attachment) async {
     try {
       final primaryUrl = (attachment['url'] ?? '').toString().trim();
@@ -575,7 +563,7 @@ class _StudentClassDetailScreenState extends State<StudentClassDetailScreen>
       if (Platform.isAndroid) {
         final mimeType = _guessMimeType(safeName);
 
-        final savedUri = await _saveToAndroidDownloads(
+        await _saveToAndroidDownloads(
           bytes: bytes,
           fileName: safeName,
           mimeType: mimeType,
@@ -584,14 +572,10 @@ class _StudentClassDetailScreenState extends State<StudentClassDetailScreen>
         if (!mounted) return;
 
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Đã lưu vào Downloads, đang mở file...'),
+          SnackBar(
+            content: Text('Đã tải file thành công vào Downloads: $safeName'),
           ),
         );
-
-        if (savedUri != null && savedUri.isNotEmpty) {
-          await _openAndroidDownloadedFile(uri: savedUri, mimeType: mimeType);
-        }
 
         return;
       }
@@ -788,6 +772,8 @@ class _StudentClassDetailScreenState extends State<StudentClassDetailScreen>
                                 .toString(),
                         profile: widget.profile,
                         chatRepo: _chatRepo,
+                        onUploadFile: _repo.uploadFileDetailed,
+                        onDownloadAttachment: _downloadAttachment,
                       ),
                     ],
                   ),
@@ -1088,6 +1074,52 @@ class _AssignmentsTab extends StatelessWidget {
                           style: const TextStyle(color: Color(0xFF475569)),
                         ),
                       ],
+                      const SizedBox(height: 8),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
+                        decoration: BoxDecoration(
+                          color: submission['assignmentScore'] == null
+                              ? const Color(0xFFFFFBEB)
+                              : const Color(0xFFF0FDF4),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: submission['assignmentScore'] == null
+                                ? const Color(0xFFFDE68A)
+                                : const Color(0xFFBBF7D0),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              submission['assignmentScore'] == null
+                                  ? Icons.hourglass_bottom_rounded
+                                  : Icons.check_circle_rounded,
+                              size: 18,
+                              color: submission['assignmentScore'] == null
+                                  ? const Color(0xFFD97706)
+                                  : const Color(0xFF16A34A),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                submission['assignmentScore'] == null
+                                    ? 'Giáo viên chưa chấm điểm bài tập'
+                                    : 'Điểm bài tập: ${submission['assignmentScore']} / 10',
+                                style: TextStyle(
+                                  color: submission['assignmentScore'] == null
+                                      ? const Color(0xFF92400E)
+                                      : const Color(0xFF15803D),
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -1378,11 +1410,16 @@ class _ClassChatTab extends StatefulWidget {
   final String classId;
   final Map<String, dynamic> profile;
   final StudentChatRepository chatRepo;
+  final Future<Map<String, dynamic>> Function(File file) onUploadFile;
+  final Future<void> Function(Map<String, dynamic> attachment)
+  onDownloadAttachment;
 
   const _ClassChatTab({
     required this.classId,
     required this.profile,
     required this.chatRepo,
+    required this.onUploadFile,
+    required this.onDownloadAttachment,
   });
 
   @override
@@ -1392,7 +1429,352 @@ class _ClassChatTab extends StatefulWidget {
 class _ClassChatTabState extends State<_ClassChatTab> {
   final TextEditingController _messageCtrl = TextEditingController();
   final ScrollController _scrollCtrl = ScrollController();
+
   bool _sending = false;
+  bool _uploadingAttachment = false;
+  List<Map<String, dynamic>> _pendingAttachments = [];
+
+  Future<void> _toggleLike(
+    Map<String, dynamic> item, {
+    required bool isLocked,
+  }) async {
+    if (isLocked) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: const Color(0xFF0F172A),
+          margin: const EdgeInsets.all(16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+          content: const Row(
+            children: [
+              Icon(Icons.lock_rounded, color: Colors.white, size: 18),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Chat đang khóa, không thể thả cảm xúc.',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+      return;
+    }
+
+    final messageId = (item['id'] ?? '').toString();
+    final myUid = FirebaseAuth.instance.currentUser?.uid ?? '';
+
+    if (messageId.isEmpty || myUid.isEmpty) return;
+
+    final likedByRaw = item['likedBy'];
+    final likedBy = likedByRaw is List
+        ? likedByRaw.map((e) => e.toString()).toList()
+        : <String>[];
+
+    final liked = likedBy.contains(myUid);
+
+    try {
+      await widget.chatRepo.toggleLikeMessage(
+        classId: widget.classId,
+        messageId: messageId,
+        uid: myUid,
+        liked: liked,
+      );
+    } catch (_) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: const Color(0xFFDC2626),
+          margin: const EdgeInsets.all(16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+          content: const Row(
+            children: [
+              Icon(Icons.error_outline_rounded, color: Colors.white, size: 18),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Không thể thả cảm xúc lúc này.',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _pickChatFile({required bool isLocked}) async {
+    if (isLocked) {
+      _showChatSnack(
+        icon: Icons.lock_rounded,
+        message: 'Chat đang khóa, không thể gửi tệp.',
+        backgroundColor: const Color(0xFF0F172A),
+      );
+      return;
+    }
+
+    if (_uploadingAttachment || _sending) return;
+
+    final picked = await FilePicker.pickFiles(
+      allowMultiple: false,
+      type: FileType.any,
+    );
+
+    if (picked == null || picked.files.isEmpty) return;
+
+    final path = picked.files.single.path;
+    if (path == null || path.isEmpty) {
+      _showChatSnack(
+        icon: Icons.error_outline_rounded,
+        message: 'Không đọc được file đã chọn.',
+        backgroundColor: const Color(0xFFDC2626),
+      );
+      return;
+    }
+
+    setState(() {
+      _uploadingAttachment = true;
+    });
+
+    try {
+      final uploaded = await widget.onUploadFile(File(path));
+
+      final attachment = <String, dynamic>{
+        'url': (uploaded['url'] ?? '').toString(),
+        'downloadUrl': uploaded['downloadUrl']?.toString(),
+        'publicId': uploaded['publicId']?.toString(),
+        'resourceType': (uploaded['resourceType'] ?? 'raw').toString(),
+        'originalName': (uploaded['originalName'] ?? picked.files.single.name)
+            .toString(),
+        'format': uploaded['format']?.toString(),
+        'size': picked.files.single.size,
+      };
+
+      if ((attachment['url'] ?? '').toString().isEmpty) {
+        throw Exception('Upload không trả về URL');
+      }
+
+      if (!mounted) return;
+
+      setState(() {
+        _pendingAttachments = [attachment];
+      });
+    } catch (_) {
+      if (!mounted) return;
+
+      _showChatSnack(
+        icon: Icons.error_outline_rounded,
+        message: 'Upload file thất bại.',
+        backgroundColor: const Color(0xFFDC2626),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _uploadingAttachment = false;
+        });
+      }
+    }
+  }
+
+  void _removePendingAttachment() {
+    setState(() {
+      _pendingAttachments.clear();
+    });
+  }
+
+  void _showChatSnack({
+    required IconData icon,
+    required String message,
+    required Color backgroundColor,
+  }) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: backgroundColor,
+        margin: const EdgeInsets.all(16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        content: Row(
+          children: [
+            Icon(icon, color: Colors.white, size: 18),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                message,
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<Map<String, dynamic>> _messageAttachments(Map<String, dynamic> item) {
+    final raw = item['attachments'];
+    if (raw is! List) return [];
+
+    return raw
+        .map((e) {
+          if (e is Map<String, dynamic>) return Map<String, dynamic>.from(e);
+          if (e is Map) return Map<String, dynamic>.from(e);
+          return <String, dynamic>{};
+        })
+        .where(
+          (e) => (e['url'] ?? e['downloadUrl'] ?? '').toString().isNotEmpty,
+        )
+        .toList();
+  }
+
+  Widget _buildPendingAttachmentPreview() {
+    if (_pendingAttachments.isEmpty) return const SizedBox.shrink();
+
+    final file = _pendingAttachments.first;
+    final name = _attachmentDisplayName(file);
+    final url = (file['url'] ?? '').toString();
+    final isImage = _isImageAttachment(file);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Row(
+        children: [
+          if (isImage)
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: Image.network(
+                url,
+                width: 44,
+                height: 44,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => const Icon(Icons.image_rounded),
+              ),
+            )
+          else
+            const Icon(Icons.attach_file_rounded, color: Color(0xFF1B2A8A)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.w800),
+            ),
+          ),
+          IconButton(
+            onPressed: _removePendingAttachment,
+            icon: const Icon(Icons.close_rounded),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMessageAttachments(
+    List<Map<String, dynamic>> attachments, {
+    required bool mine,
+  }) {
+    if (attachments.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: attachments.map((attachment) {
+        final url = (attachment['url'] ?? '').toString();
+        final name = _attachmentDisplayName(attachment);
+        final isImage = _isImageAttachment(attachment);
+        final isPdf = _isPdfAttachment(attachment);
+
+        if (isImage) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: InkWell(
+              onTap: () => _showAttachmentImagePreview(context, url),
+              borderRadius: BorderRadius.circular(14),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(14),
+                child: Image.network(
+                  url,
+                  width: 210,
+                  height: 150,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => Container(
+                    width: 210,
+                    height: 120,
+                    alignment: Alignment.center,
+                    color: const Color(0xFFF1F5F9),
+                    child: const Icon(Icons.broken_image_rounded),
+                  ),
+                ),
+              ),
+            ),
+          );
+        }
+
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: InkWell(
+            onTap: () => widget.onDownloadAttachment(attachment),
+            borderRadius: BorderRadius.circular(14),
+            child: Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: mine
+                    ? Colors.white.withOpacity(0.12)
+                    : const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: mine ? Colors.white24 : const Color(0xFFE2E8F0),
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    isPdf
+                        ? Icons.picture_as_pdf_rounded
+                        : Icons.insert_drive_file_rounded,
+                    color: isPdf
+                        ? const Color(0xFFDC2626)
+                        : (mine ? Colors.white : const Color(0xFF1B2A8A)),
+                  ),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: mine ? Colors.white : const Color(0xFF0F172A),
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Icon(
+                    Icons.download_rounded,
+                    size: 18,
+                    color: mine ? Colors.white70 : const Color(0xFF64748B),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
 
   @override
   void dispose() {
@@ -1403,7 +1785,10 @@ class _ClassChatTabState extends State<_ClassChatTab> {
 
   Future<void> _send() async {
     final text = _messageCtrl.text.trim();
-    if (text.isEmpty || _sending) return;
+
+    if ((text.isEmpty && _pendingAttachments.isEmpty) || _sending) return;
+
+    final attachments = List<Map<String, dynamic>>.from(_pendingAttachments);
 
     setState(() => _sending = true);
 
@@ -1412,23 +1797,22 @@ class _ClassChatTabState extends State<_ClassChatTab> {
         classId: widget.classId,
         text: text,
         profile: widget.profile,
+        attachments: attachments,
       );
 
       _messageCtrl.clear();
 
-      await Future.delayed(const Duration(milliseconds: 100));
-      if (_scrollCtrl.hasClients) {
-        _scrollCtrl.animateTo(
-          _scrollCtrl.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 250),
-          curve: Curves.easeOut,
-        );
-      }
-    } catch (e) {
+      setState(() {
+        _pendingAttachments.clear();
+      });
+    } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Gửi tin nhắn thất bại: $e')));
+
+      _showChatSnack(
+        icon: Icons.error_outline_rounded,
+        message: 'Gửi tin nhắn thất bại.',
+        backgroundColor: const Color(0xFFDC2626),
+      );
     } finally {
       if (mounted) setState(() => _sending = false);
     }
@@ -1566,18 +1950,9 @@ class _ClassChatTabState extends State<_ClassChatTab> {
                     );
                   }
 
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (_scrollCtrl.hasClients) {
-                      _scrollCtrl.animateTo(
-                        _scrollCtrl.position.maxScrollExtent,
-                        duration: const Duration(milliseconds: 250),
-                        curve: Curves.easeOut,
-                      );
-                    }
-                  });
-
                   return ListView.builder(
                     controller: _scrollCtrl,
+                    reverse: true,
                     padding: const EdgeInsets.all(16),
                     itemCount: items.length,
                     itemBuilder: (_, i) {
@@ -1586,114 +1961,213 @@ class _ClassChatTabState extends State<_ClassChatTab> {
                       final teacher = _isTeacher(item);
                       final deleted = item['deleted'] == true;
 
+                      final myUid =
+                          FirebaseAuth.instance.currentUser?.uid ?? '';
+                      final likedByRaw = item['likedBy'];
+                      final likedBy = likedByRaw is List
+                          ? likedByRaw.map((e) => e.toString()).toList()
+                          : <String>[];
+
+                      final liked = likedBy.contains(myUid);
+                      final likeCount = likedBy.length;
+                      final attachments = _messageAttachments(item);
+                      final text = (item['text'] ?? '').toString();
+
                       return Align(
                         alignment: mine
                             ? Alignment.centerRight
                             : Alignment.centerLeft,
-                        child: Container(
-                          margin: const EdgeInsets.only(bottom: 10),
-                          padding: const EdgeInsets.all(12),
-                          constraints: const BoxConstraints(maxWidth: 280),
-                          decoration: BoxDecoration(
-                            color: deleted
-                                ? const Color(0xFFF1F5F9)
-                                : teacher
-                                ? const Color(0xFFFFF7ED)
-                                : mine
-                                ? const Color(0xFF1B2A8A)
-                                : Colors.white,
-                            borderRadius: BorderRadius.circular(16),
-                            border: mine || deleted
-                                ? null
-                                : Border.all(color: Colors.black12),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                        child: GestureDetector(
+                          onDoubleTap: deleted
+                              ? null
+                              : () => _toggleLike(item, isLocked: isLocked),
+                          child: Stack(
+                            clipBehavior: Clip.none,
                             children: [
-                              if (!mine && !deleted)
-                                Row(
+                              Container(
+                                margin: const EdgeInsets.only(bottom: 16),
+                                padding: const EdgeInsets.all(12),
+                                constraints: const BoxConstraints(
+                                  maxWidth: 280,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: deleted
+                                      ? const Color(0xFFF1F5F9)
+                                      : teacher
+                                      ? const Color(0xFFFFF7ED)
+                                      : mine
+                                      ? const Color(0xFF1B2A8A)
+                                      : Colors.white,
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: mine || deleted
+                                      ? null
+                                      : Border.all(color: Colors.black12),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Expanded(
-                                      child: Text(
-                                        (item['senderName'] ?? 'Người dùng')
-                                            .toString(),
+                                    if (!mine && !deleted)
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              (item['senderName'] ??
+                                                      'Người dùng')
+                                                  .toString(),
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w800,
+                                                color: teacher
+                                                    ? Colors.deepOrange
+                                                    : const Color(0xFF1B2A8A),
+                                              ),
+                                            ),
+                                          ),
+                                          if (teacher)
+                                            Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 8,
+                                                    vertical: 3,
+                                                  ),
+                                              decoration: BoxDecoration(
+                                                color: const Color(0xFFFFEDD5),
+                                                borderRadius:
+                                                    BorderRadius.circular(999),
+                                              ),
+                                              child: const Text(
+                                                'Giảng viên',
+                                                style: TextStyle(
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.w800,
+                                                  color: Colors.deepOrange,
+                                                ),
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                    if (!mine && !deleted)
+                                      const SizedBox(height: 4),
+                                    if (deleted)
+                                      Text(
+                                        'Tin nhắn đã bị xóa',
                                         style: TextStyle(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w800,
-                                          color: teacher
-                                              ? Colors.deepOrange
-                                              : const Color(0xFF1B2A8A),
+                                          color: const Color(0xFF64748B),
+                                          fontSize: 14,
+                                          fontStyle: FontStyle.italic,
+                                          height: 1.35,
                                         ),
+                                      )
+                                    else ...[
+                                      _buildMessageAttachments(
+                                        attachments,
+                                        mine: mine,
                                       ),
-                                    ),
-                                    if (teacher)
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 8,
-                                          vertical: 3,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: const Color(0xFFFFEDD5),
-                                          borderRadius: BorderRadius.circular(
-                                            999,
-                                          ),
-                                        ),
-                                        child: const Text(
-                                          'Giảng viên',
+                                      if (text.isNotEmpty)
+                                        Text(
+                                          text,
                                           style: TextStyle(
-                                            fontSize: 10,
-                                            fontWeight: FontWeight.w800,
-                                            color: Colors.deepOrange,
+                                            color: mine
+                                                ? Colors.white
+                                                : Colors.black87,
+                                            fontSize: 14,
+                                            height: 1.35,
                                           ),
                                         ),
-                                      ),
+                                    ],
+                                    const SizedBox(height: 6),
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.end,
+                                      children: [
+                                        if (!deleted && _canDelete(item))
+                                          InkWell(
+                                            onTap: () => _deleteMessage(item),
+                                            child: const Padding(
+                                              padding: EdgeInsets.only(
+                                                right: 8,
+                                              ),
+                                              child: Icon(
+                                                Icons.delete_outline_rounded,
+                                                size: 16,
+                                                color: Colors.redAccent,
+                                              ),
+                                            ),
+                                          ),
+                                        Text(
+                                          _formatTime(item['createdAt']),
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: mine
+                                                ? Colors.white70
+                                                : const Color(0xFF94A3B8),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ],
                                 ),
-                              if (!mine && !deleted) const SizedBox(height: 4),
-                              Text(
-                                deleted
-                                    ? 'Tin nhắn đã bị xóa'
-                                    : (item['text'] ?? '').toString(),
-                                style: TextStyle(
-                                  color: deleted
-                                      ? const Color(0xFF64748B)
-                                      : mine
-                                      ? Colors.white
-                                      : Colors.black87,
-                                  fontSize: 14,
-                                  fontStyle: deleted
-                                      ? FontStyle.italic
-                                      : FontStyle.normal,
-                                  height: 1.35,
-                                ),
                               ),
-                              const SizedBox(height: 6),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.end,
-                                children: [
-                                  if (!deleted && _canDelete(item))
-                                    InkWell(
-                                      onTap: () => _deleteMessage(item),
-                                      child: const Padding(
-                                        padding: EdgeInsets.only(right: 8),
-                                        child: Icon(
-                                          Icons.delete_outline_rounded,
-                                          size: 16,
-                                          color: Colors.redAccent,
+
+                              if (!deleted)
+                                Positioned(
+                                  right: mine ? 6 : null,
+                                  left: mine ? null : 6,
+                                  bottom: -10,
+                                  child: InkWell(
+                                    onTap: () =>
+                                        _toggleLike(item, isLocked: isLocked),
+                                    borderRadius: BorderRadius.circular(999),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 7,
+                                        vertical: 4,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        borderRadius: BorderRadius.circular(
+                                          999,
                                         ),
+                                        border: Border.all(
+                                          color: const Color(0xFFE2E8F0),
+                                        ),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Colors.black.withOpacity(
+                                              0.08,
+                                            ),
+                                            blurRadius: 8,
+                                            offset: const Offset(0, 3),
+                                          ),
+                                        ],
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            liked
+                                                ? Icons.thumb_up_alt_rounded
+                                                : Icons.thumb_up_alt_outlined,
+                                            size: 15,
+                                            color: liked
+                                                ? const Color(0xFF2563EB)
+                                                : const Color(0xFF94A3B8),
+                                          ),
+                                          if (likeCount > 0) ...[
+                                            const SizedBox(width: 3),
+                                            Text(
+                                              '$likeCount',
+                                              style: const TextStyle(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w800,
+                                                color: Color(0xFF334155),
+                                              ),
+                                            ),
+                                          ],
+                                        ],
                                       ),
                                     ),
-                                  Text(
-                                    _formatTime(item['createdAt']),
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: mine
-                                          ? Colors.white70
-                                          : const Color(0xFF94A3B8),
-                                    ),
                                   ),
-                                ],
-                              ),
+                                ),
                             ],
                           ),
                         ),
@@ -1711,66 +2185,88 @@ class _ClassChatTabState extends State<_ClassChatTab> {
                   color: Color(0xFFF8FAFC),
                   border: Border(top: BorderSide(color: Color(0xFFE2E8F0))),
                 ),
-                child: Row(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _messageCtrl,
-                        minLines: 1,
-                        maxLines: 4,
-                        enabled: !isLocked && !_sending,
-                        decoration: InputDecoration(
-                          hintText: isLocked
-                              ? 'Chat đang bị khóa'
-                              : 'Nhắn vào nhóm lớp...',
-                          filled: true,
-                          fillColor: isLocked
-                              ? const Color(0xFFF1F5F9)
-                              : Colors.white,
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 12,
-                          ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(14),
-                            borderSide: const BorderSide(
-                              color: Color(0xFFE2E8F0),
-                            ),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(14),
-                            borderSide: const BorderSide(
-                              color: Color(0xFFE2E8F0),
-                            ),
-                          ),
+                    _buildPendingAttachmentPreview(),
+                    Row(
+                      children: [
+                        IconButton(
+                          onPressed: (_sending || _uploadingAttachment)
+                              ? null
+                              : () => _pickChatFile(isLocked: isLocked),
+                          icon: _uploadingAttachment
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.add_rounded),
+                          color: const Color(0xFF1B2A8A),
+                          tooltip: 'Gửi ảnh/file',
                         ),
-                        onSubmitted: (_) => isLocked ? null : _send(),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    SizedBox(
-                      height: 48,
-                      width: 48,
-                      child: FilledButton(
-                        onPressed: (_sending || isLocked) ? null : _send,
-                        style: FilledButton.styleFrom(
-                          backgroundColor: const Color(0xFF1B2A8A),
-                          padding: EdgeInsets.zero,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                        ),
-                        child: _sending
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
+                        Expanded(
+                          child: TextField(
+                            controller: _messageCtrl,
+                            minLines: 1,
+                            maxLines: 4,
+                            enabled: !isLocked && !_sending,
+                            decoration: InputDecoration(
+                              hintText: isLocked
+                                  ? 'Chat đang bị khóa'
+                                  : 'Nhắn vào nhóm lớp...',
+                              filled: true,
+                              fillColor: isLocked
+                                  ? const Color(0xFFF1F5F9)
+                                  : Colors.white,
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 12,
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(14),
+                                borderSide: const BorderSide(
+                                  color: Color(0xFFE2E8F0),
                                 ),
-                              )
-                            : const Icon(Icons.send_rounded),
-                      ),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(14),
+                                borderSide: const BorderSide(
+                                  color: Color(0xFFE2E8F0),
+                                ),
+                              ),
+                            ),
+                            onSubmitted: (_) => isLocked ? null : _send(),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        SizedBox(
+                          height: 48,
+                          width: 48,
+                          child: FilledButton(
+                            onPressed: (_sending || isLocked) ? null : _send,
+                            style: FilledButton.styleFrom(
+                              backgroundColor: const Color(0xFF1B2A8A),
+                              padding: EdgeInsets.zero,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                            ),
+                            child: _sending
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Icon(Icons.send_rounded),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),

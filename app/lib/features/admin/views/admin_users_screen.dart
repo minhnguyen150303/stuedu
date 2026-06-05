@@ -491,7 +491,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                             size: 30,
                             color: Color(0xFF93A1B7),
                           ),
-                          hintText: 'Tìm theo tên, email hoặc mã người dùng...',
+                          hintText: 'Tìm theo tên, email hoặc mã sinh viên...',
                           hintStyle: TextStyle(
                             color: Color(0xFF6D7B92),
                             fontSize: 15,

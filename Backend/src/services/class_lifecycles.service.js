@@ -190,8 +190,11 @@ async function listClassLifecycles(query = {}) {
 
     if (query.hidden === "true") {
         items = items.filter((x) => x.isHidden === true);
-    }
-    if (query.hidden === "false") {
+    } else if (query.hidden === "false") {
+        items = items.filter((x) => x.isHidden === false);
+    } else if (query.hidden === "all") {
+        // lấy tất cả, không lọc
+    } else {
         items = items.filter((x) => x.isHidden === false);
     }
 
@@ -348,6 +351,28 @@ async function hideClassLifecycle(id) {
     return mapLifecycleDoc(after);
 }
 
+async function showClassLifecycle(id) {
+    const ref = db.collection("class_lifecycles").doc(id);
+    const snap = await ref.get();
+
+    if (!snap.exists) {
+        const err = new Error("Lifecycle not found");
+        err.statusCode = 404;
+        throw err;
+    }
+
+    await ref.set(
+        {
+            isHidden: false,
+            updatedAt: new Date(),
+        },
+        { merge: true }
+    );
+
+    const after = await ref.get();
+    return mapLifecycleDoc(after);
+}
+
 async function replaceClassLifecycle(oldId, newData) {
     const oldRef = db.collection("class_lifecycles").doc(oldId);
     const oldSnap = await oldRef.get();
@@ -393,4 +418,5 @@ module.exports = {
     updateClassLifecycle,
     hideClassLifecycle,
     replaceClassLifecycle,
+    showClassLifecycle,
 };

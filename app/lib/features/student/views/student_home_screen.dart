@@ -28,6 +28,10 @@ class StudentHomeScreen extends StatefulWidget {
 class _StudentHomeScreenState extends State<StudentHomeScreen> {
   late final StudentRepository _repo;
 
+  static Map<String, dynamic>? _cachedDashboard;
+  static int _cachedUnreadCount = 0;
+  static DateTime? _cachedAt;
+
   bool _loading = true;
   String? _error;
   Map<String, dynamic>? _dashboard;
@@ -37,7 +41,23 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
   void initState() {
     super.initState();
     _repo = StudentRepository(ApiClient(AppConfig.baseUrl));
-    _loadDashboard();
+
+    if (_cachedDashboard != null) {
+      _dashboard = _cachedDashboard;
+      _unreadCount = _cachedUnreadCount;
+      _loading = false;
+
+      final cachedAt = _cachedAt;
+      final isOld =
+          cachedAt == null ||
+          DateTime.now().difference(cachedAt).inMinutes >= 2;
+
+      if (isOld) {
+        _loadDashboard(silent: true);
+      }
+    } else {
+      _loadDashboard();
+    }
   }
 
   Future<void> _handleBackPressed() async {
@@ -81,7 +101,11 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
   Future<void> _loadUnreadCount() async {
     try {
       final count = await _repo.getUnreadNotificationCount();
+
+      _cachedUnreadCount = count;
+
       if (!mounted) return;
+
       setState(() {
         _unreadCount = count;
       });
@@ -106,20 +130,38 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
     );
   }
 
-  Future<void> _loadDashboard() async {
+  Future<void> _loadDashboard({bool silent = false}) async {
+    if (!silent && mounted) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
+
     try {
       final data = await _repo.getHomeDashboard();
 
       if (!mounted) return;
+
+      _cachedDashboard = data;
+      _cachedAt = DateTime.now();
 
       setState(() {
         _dashboard = data;
         _loading = false;
         _error = null;
       });
+
       await _loadUnreadCount();
     } catch (e) {
       if (!mounted) return;
+
+      if (_dashboard != null) {
+        setState(() {
+          _loading = false;
+        });
+        return;
+      }
 
       setState(() {
         _error = e.toString();
@@ -197,7 +239,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
               : _error != null
               ? _ErrorView(message: _error!, onRetry: _loadDashboard)
               : RefreshIndicator(
-                  onRefresh: _loadDashboard,
+                  onRefresh: () => _loadDashboard(),
                   child: _HomeTab(
                     fullName: fullName,
                     avatarUrl: avatarUrl,

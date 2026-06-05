@@ -194,6 +194,7 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
       courseId: widget.course['id'].toString(),
       yearNumber: (widget.semester['yearNumber'] ?? '').toString(),
       termNumber: (widget.semester['termNumber'] ?? '').toString(),
+      hidden: 'all',
     );
 
     final enriched = items.map((item) {
@@ -297,12 +298,36 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
         ...cls,
         'teacherName': teacherNameById[teacherId] ?? teacherId,
         'currentStudents': currentStudents,
+        'academicYearSnapshot':
+            (cls['academicYearSnapshot'] ??
+                    widget.semester['academicYear'] ??
+                    '')
+                .toString(),
+        'yearNumberSnapshot':
+            cls['yearNumberSnapshot'] ?? widget.semester['yearNumber'],
+        'termNumberSnapshot':
+            cls['termNumberSnapshot'] ?? widget.semester['termNumber'],
       });
     }
 
     enriched.sort((a, b) {
+      final yearA = (a['academicYearSnapshot'] ?? '').toString();
+      final yearB = (b['academicYearSnapshot'] ?? '').toString();
+
+      if (yearA != yearB) {
+        return yearB.compareTo(yearA);
+      }
+
+      final termA = (a['termNumberSnapshot'] as num?)?.toInt() ?? 0;
+      final termB = (b['termNumberSnapshot'] as num?)?.toInt() ?? 0;
+
+      if (termA != termB) {
+        return termB.compareTo(termA);
+      }
+
       final dateA = (a['updatedAt'] ?? '').toString();
       final dateB = (b['updatedAt'] ?? '').toString();
+
       return dateB.compareTo(dateA);
     });
 
@@ -1794,8 +1819,10 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
         await Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) =>
-                ClassStudentsScreen(classItem: cls, semester: widget.semester),
+            builder: (_) => ClassStudentsScreen(
+              classItem: {...cls, 'courseName': widget.course['courseName']},
+              semester: widget.semester,
+            ),
           ),
         );
         await _refresh();
@@ -1815,16 +1842,16 @@ class _ClassManagementScreenState extends State<ClassManagementScreen> {
           successMessage: 'Đã ẩn lớp mẫu',
         );
         break;
-      // case 'showLifecycle':
-      //   await _confirmAndRun(
-      //     title: 'Hiện lớp mẫu',
-      //     content:
-      //         'Lớp mẫu này sẽ được dùng lại để tự động sinh lớp mới trong các chu kỳ tiếp theo.',
-      //     actionLabel: 'Hiện lớp mẫu',
-      //     onConfirmed: () => _repo.showClassLifecycle(cls['id'].toString()),
-      //     successMessage: 'Đã hiện lớp mẫu',
-      //   );
-      //   break;
+      case 'showLifecycle':
+        await _confirmAndRun(
+          title: 'Hiện lớp mẫu',
+          content:
+              'Lớp mẫu này sẽ được dùng lại để tự động sinh lớp mới trong các chu kỳ tiếp theo.',
+          actionLabel: 'Hiện lớp mẫu',
+          onConfirmed: () => _repo.showClassLifecycle(cls['id'].toString()),
+          successMessage: 'Đã hiện lớp mẫu',
+        );
+        break;
       case 'toggleVisibility':
         final nextValue = !_isClassVisible(cls);
 
@@ -2414,7 +2441,25 @@ class _ClassCard extends StatelessWidget {
     final maxStudents = (cls['maxStudents'] as num?)?.toInt() ?? 0;
     final room = (cls['room'] ?? '--').toString();
     final schedule = List<dynamic>.from((cls['schedule'] as List?) ?? const []);
+    final academicYear = (cls['academicYearSnapshot'] ?? '').toString();
+    final yearNumber = cls['yearNumberSnapshot'];
+    final termNumber = cls['termNumberSnapshot'];
 
+    final historyLabelParts = <String>[];
+
+    if (academicYear.isNotEmpty) {
+      historyLabelParts.add('Năm học $academicYear');
+    }
+
+    if (yearNumber != null) {
+      historyLabelParts.add('Năm $yearNumber');
+    }
+
+    if (termNumber != null) {
+      historyLabelParts.add('HK$termNumber');
+    }
+
+    final historyLabel = historyLabelParts.join(' • ');
     final isLifecycleTab = tab == 0;
     final isRunningTab = tab == 1;
     final isHistoryTab = tab == 2;
@@ -2509,47 +2554,51 @@ class _ClassCard extends StatelessWidget {
                   color: const Color(0xFF7C3AED),
                   bgColor: const Color(0xFFF3E8FF),
                 ),
+                if (isHistoryTab && historyLabel.isNotEmpty)
+                  _InfoChip(
+                    icon: Icons.calendar_month_rounded,
+                    text: historyLabel,
+                    color: const Color(0xFF475569),
+                    bgColor: const Color(0xFFF1F5F9),
+                  ),
+                if (isLifecycleTab &&
+                    (cls['hidden'] == true || cls['isHidden'] == true))
+                  const _InfoChip(
+                    icon: Icons.visibility_off_rounded,
+                    text: 'Đã ẩn',
+                    color: Color(0xFFB45309),
+                    bgColor: Color(0xFFFFF4DB),
+                  ),
               ],
             ),
             const SizedBox(height: 12),
-            Row(
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
               children: [
                 _StatusPill(
                   text: classLifecycleLabel(cls),
                   bgColor: classLifecycleBg(cls),
                   color: classLifecycleTextColor(cls),
                 ),
-                const SizedBox(width: 8),
                 if (isRunningTab)
                   _StatusPill(
                     text: visibilityLabel(cls),
                     bgColor: visibilityBg(cls),
                     color: visibilityTextColor(cls),
                   ),
-                if (isHistoryTab)
-                  _StatusPill(
-                    text: safeDateTime((cls['updatedAt'] ?? '').toString()),
-                    bgColor: const Color(0xFFF1F5F9),
-                    color: const Color(0xFF64748B),
+                if (isLifecycleTab &&
+                    (cls['hidden'] == true || cls['isHidden'] == true))
+                  const _StatusPill(
+                    text: 'Đã ẩn',
+                    bgColor: Color(0xFFFFF4DB),
+                    color: Color(0xFFB45309),
                   ),
-                const Spacer(),
-                Text(
-                  isLifecycleTab
-                      ? 'Tác vụ'
-                      : isRunningTab
-                      ? 'Chi tiết'
-                      : 'Lịch sử',
-                  style: const TextStyle(
-                    color: _primary,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 13,
-                  ),
-                ),
-                const SizedBox(width: 4),
-                const Icon(
-                  Icons.chevron_right_rounded,
-                  color: _primary,
-                  size: 22,
+                _StatusPill(
+                  text:
+                      'Cập nhật: ${safeDateTime((cls['updatedAt'] ?? cls['createdAt'] ?? '').toString())}',
+                  bgColor: const Color(0xFFF1F5F9),
+                  color: const Color(0xFF64748B),
                 ),
               ],
             ),
@@ -2576,6 +2625,7 @@ class _InfoChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
+      constraints: const BoxConstraints(maxWidth: double.infinity),
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
       decoration: BoxDecoration(
         color: bgColor,
@@ -2583,17 +2633,24 @@ class _InfoChip extends StatelessWidget {
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 14, color: color),
+          Padding(
+            padding: const EdgeInsets.only(top: 1),
+            child: Icon(icon, size: 14, color: color),
+          ),
           const SizedBox(width: 4),
           Flexible(
             child: Text(
               text,
-              overflow: TextOverflow.ellipsis,
+              softWrap: true,
+              maxLines: 3,
+              overflow: TextOverflow.visible,
               style: TextStyle(
                 color: color,
                 fontSize: 12.5,
                 fontWeight: FontWeight.w900,
+                height: 1.25,
               ),
             ),
           ),
@@ -2616,22 +2673,23 @@ class _StatusPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Flexible(
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: bgColor,
-          borderRadius: BorderRadius.circular(999),
-        ),
-        child: Text(
-          text,
-          overflow: TextOverflow.ellipsis,
-          maxLines: 1,
-          style: TextStyle(
-            color: color,
-            fontSize: 12.5,
-            fontWeight: FontWeight.w900,
-          ),
+    return Container(
+      constraints: BoxConstraints(
+        maxWidth: MediaQuery.of(context).size.width - 64,
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        text,
+        overflow: TextOverflow.ellipsis,
+        maxLines: 1,
+        style: TextStyle(
+          color: color,
+          fontSize: 12.5,
+          fontWeight: FontWeight.w900,
         ),
       ),
     );

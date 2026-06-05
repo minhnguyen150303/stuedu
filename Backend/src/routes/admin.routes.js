@@ -23,7 +23,7 @@ router.get(
 router.get(
     "/users",
     requireAuth,
-    requireRole(["admin"]),
+    requireRole(["admin", "qlsv"]),
     asyncHandler(controller.listUsers)
 );
 
@@ -58,9 +58,16 @@ router.post(
 );
 
 router.get(
+    "/students/:uid/learning-overview",
+    requireAuth,
+    requireRole(["admin", "qlsv"]),
+    asyncHandler(controller.getStudentLearningOverview)
+);
+
+router.get(
     "/users/:uid",
     requireAuth,
-    requireRole(["admin"]),
+    requireRole(["admin", "qlsv"]),
     asyncHandler(controller.getUserDetail)
 );
 

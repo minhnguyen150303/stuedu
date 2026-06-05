@@ -11,6 +11,7 @@ import 'package:intl/intl.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:excel/excel.dart' as ex;
 
 import '../../../data/repositories/teacher_chat_repository.dart';
 import '../../../core/config/app_config.dart';
@@ -51,6 +52,11 @@ class _TeacherClassDetailScreenState extends State<TeacherClassDetailScreen>
 
   bool _loading = true;
   String? _error;
+  String? _gradingSubmissionId;
+  String? _removingStudentId;
+
+  final TextEditingController _studentSearchController =
+      TextEditingController();
 
   List<Map<String, dynamic>> _students = [];
   List<Map<String, dynamic>> _materials = [];
@@ -354,27 +360,26 @@ class _TeacherClassDetailScreenState extends State<TeacherClassDetailScreen>
     required Uint8List bytes,
     required String fileName,
     required String mimeType,
+    String? folderName,
   }) async {
     if (!Platform.isAndroid) return null;
 
+    final data = <String, dynamic>{
+      'fileName': fileName,
+      'mimeType': mimeType,
+      'bytes': bytes,
+    };
+
+    if (folderName != null && folderName.trim().isNotEmpty) {
+      data['folderName'] = folderName.trim();
+    }
+
     final result = await _downloadsChannel.invokeMethod<String>(
       'saveToDownloads',
-      {'fileName': fileName, 'mimeType': mimeType, 'bytes': bytes},
+      data,
     );
 
     return result;
-  }
-
-  Future<void> _openAndroidDownloadedFile({
-    required String uri,
-    required String mimeType,
-  }) async {
-    if (!Platform.isAndroid) return;
-
-    await _downloadsChannel.invokeMethod('openDownloadedFile', {
-      'uri': uri,
-      'mimeType': mimeType,
-    });
   }
 
   Future<void> _downloadAttachment(Map<String, dynamic> attachment) async {
@@ -436,7 +441,7 @@ class _TeacherClassDetailScreenState extends State<TeacherClassDetailScreen>
       if (Platform.isAndroid) {
         final mimeType = _guessMimeType(safeName);
 
-        final savedUri = await _saveToAndroidDownloads(
+        await _saveToAndroidDownloads(
           bytes: bytes,
           fileName: safeName,
           mimeType: mimeType,
@@ -445,14 +450,10 @@ class _TeacherClassDetailScreenState extends State<TeacherClassDetailScreen>
         if (!mounted) return;
 
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Đã lưu vào Downloads, đang mở file...'),
+          SnackBar(
+            content: Text('Đã tải file thành công vào Downloads: $safeName'),
           ),
         );
-
-        if (savedUri != null && savedUri.isNotEmpty) {
-          await _openAndroidDownloadedFile(uri: savedUri, mimeType: mimeType);
-        }
 
         return;
       }
@@ -768,7 +769,57 @@ class _TeacherClassDetailScreenState extends State<TeacherClassDetailScreen>
     );
   }
 
+  Future<void> _gradeSubmission({
+    required String assignmentId,
+    required String studentId,
+    required String submissionId,
+    required TextEditingController controller,
+  }) async {
+    final raw = controller.text.trim().replaceAll(',', '.');
+    final score = double.tryParse(raw);
+
+    if (score == null || score < 0 || score > 10) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Điểm bài tập phải từ 0 đến 10')),
+      );
+      return;
+    }
+
+    setState(() {
+      _gradingSubmissionId = submissionId;
+    });
+
+    try {
+      await _repo.gradeAssignmentSubmission(
+        assignmentId: assignmentId,
+        studentId: studentId,
+        assignmentScore: score,
+      );
+
+      await _loadData();
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Đã lưu điểm bài tập')));
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Chấm điểm thất bại: $e')));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _gradingSubmissionId = null;
+        });
+      }
+    }
+  }
+
   Widget _buildStudentSubmissionsSection(Map<String, dynamic> assignment) {
+    final assignmentId = (assignment['id'] ?? '').toString();
     final submissionsRaw = (assignment['submissions'] as List?) ?? const [];
 
     final submissions = submissionsRaw
@@ -840,6 +891,9 @@ class _TeacherClassDetailScreenState extends State<TeacherClassDetailScreen>
         ),
         const SizedBox(height: 10),
         ...submissions.map((submission) {
+          final submissionId = (submission['id'] ?? '').toString();
+          final studentId = (submission['studentId'] ?? '').toString();
+
           final student = Map<String, dynamic>.from(
             (submission['student'] as Map?) ?? const {},
           );
@@ -847,6 +901,15 @@ class _TeacherClassDetailScreenState extends State<TeacherClassDetailScreen>
           final studentName = (student['fullName'] ?? 'Sinh viên').toString();
           final studentCode = (student['studentCode'] ?? '').toString();
           final submittedAt = _formatDateTime(submission['submittedAt']);
+
+          final currentScore = submission['assignmentScore'];
+          final gradedAt = submission['gradedAt'];
+
+          final scoreController = TextEditingController(
+            text: currentScore == null ? '' : currentScore.toString(),
+          );
+
+          final isSaving = _gradingSubmissionId == submissionId;
 
           final file = Map<String, dynamic>.from(
             (submission['file'] as Map?) ??
@@ -902,13 +965,143 @@ class _TeacherClassDetailScreenState extends State<TeacherClassDetailScreen>
                         ],
                       ),
                     ),
+                    if (currentScore != null)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFDCFCE7),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          '$currentScore điểm',
+                          style: const TextStyle(
+                            color: Color(0xFF15803D),
+                            fontWeight: FontWeight.w900,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
                   ],
                 ),
+
                 const SizedBox(height: 10),
+
                 _buildFileTile(
                   file: file,
                   label: 'Bài làm sinh viên',
                   color: const Color(0xFF16A34A),
+                ),
+
+                const SizedBox(height: 8),
+
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Chấm điểm bài tập',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w900,
+                          color: Color(0xFF0F172A),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: scoreController,
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
+                              textAlign: TextAlign.center,
+                              decoration: InputDecoration(
+                                hintText: '0 - 10',
+                                filled: true,
+                                fillColor: const Color(0xFFF8FAFC),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  vertical: 12,
+                                ),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: const BorderSide(
+                                    color: Color(0xFFE2E8F0),
+                                  ),
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: const BorderSide(
+                                    color: Color(0xFFE2E8F0),
+                                  ),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: const BorderSide(
+                                    color: Color(0xFF16A34A),
+                                    width: 1.4,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          SizedBox(
+                            height: 46,
+                            child: ElevatedButton.icon(
+                              onPressed: isSaving
+                                  ? null
+                                  : () => _gradeSubmission(
+                                      assignmentId: assignmentId,
+                                      studentId: studentId,
+                                      submissionId: submissionId,
+                                      controller: scoreController,
+                                    ),
+                              icon: isSaving
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : const Icon(Icons.save_rounded),
+                              label: Text(isSaving ? 'Đang lưu' : 'Lưu'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF16A34A),
+                                foregroundColor: Colors.white,
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (gradedAt != null) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          'Đã chấm lúc: ${_formatDateTime(gradedAt)}',
+                          style: const TextStyle(
+                            color: Color(0xFF64748B),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -954,6 +1147,382 @@ class _TeacherClassDetailScreenState extends State<TeacherClassDetailScreen>
       );
     } catch (_) {
       return null;
+    }
+  }
+
+  String _safeExportName(String value) {
+    final text = value.trim().isEmpty ? 'khong_ten' : value.trim();
+
+    return text
+        .replaceAll(RegExp(r'[\\/:*?"<>|]'), '_')
+        .replaceAll(RegExp(r'\s+'), '_');
+  }
+
+  String _studentCodeFromUser(Map<String, dynamic> user) {
+    final raw = user['studentInfo'];
+
+    final studentInfo = raw is Map<String, dynamic>
+        ? raw
+        : raw is Map
+        ? Map<String, dynamic>.from(raw)
+        : <String, dynamic>{};
+
+    return (studentInfo['studentCode'] ?? '').toString();
+  }
+
+  String _studentClassNameFromUser(Map<String, dynamic> user) {
+    final raw = user['studentInfo'];
+
+    final studentInfo = raw is Map<String, dynamic>
+        ? raw
+        : raw is Map
+        ? Map<String, dynamic>.from(raw)
+        : <String, dynamic>{};
+
+    return (studentInfo['className'] ?? '').toString();
+  }
+
+  Future<String> _resolveTeacherExportFolderPath() async {
+    Directory baseDir;
+
+    if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
+      final downloadsDir = await getDownloadsDirectory();
+
+      if (downloadsDir == null) {
+        throw Exception('Không tìm thấy thư mục Downloads');
+      }
+
+      baseDir = downloadsDir;
+    } else {
+      baseDir = await getApplicationDocumentsDirectory();
+    }
+
+    final exportDir = Directory(_joinPath(baseDir.path, 'gv_dssv'));
+
+    if (!await exportDir.exists()) {
+      await exportDir.create(recursive: true);
+    }
+
+    return exportDir.path;
+  }
+
+  Future<void> _saveTeacherExcelFile({
+    required Uint8List bytes,
+    required String fileName,
+  }) async {
+    const mimeType =
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+    if (Platform.isAndroid) {
+      await _saveToAndroidDownloads(
+        bytes: bytes,
+        fileName: fileName,
+        mimeType: mimeType,
+        folderName: 'gv_dssv',
+      );
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Đã lưu vào Downloads/gv_dssv/$fileName')),
+      );
+
+      return;
+    }
+
+    final folderPath = await _resolveTeacherExportFolderPath();
+    final fullPath = _joinPath(folderPath, fileName);
+
+    final file = File(fullPath);
+    await file.writeAsBytes(bytes, flush: true);
+
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('Đã lưu file: $fullPath')));
+  }
+
+  Future<void> _exportTeacherStudentsToExcel() async {
+    if (_students.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Không có sinh viên để xuất Excel')),
+      );
+      return;
+    }
+
+    try {
+      final classCode = (widget.classItem['classCode'] ?? '').toString();
+      final courseName = (widget.classItem['courseName'] ?? 'mon_hoc')
+          .toString();
+
+      final safeClassCode = _safeExportName(classCode);
+      final safeCourseName = _safeExportName(courseName);
+
+      final excel = ex.Excel.createExcel();
+      const sheetName = 'DSSV';
+      final sheet = excel[sheetName];
+
+      if (excel.sheets.containsKey('Sheet1')) {
+        excel.delete('Sheet1');
+      }
+
+      sheet.appendRow([
+        ex.TextCellValue('STT'),
+        ex.TextCellValue('Mã sinh viên'),
+        ex.TextCellValue('Họ tên'),
+        ex.TextCellValue('Lớp hành chính'),
+        ex.TextCellValue('Email'),
+        ex.TextCellValue('UID'),
+      ]);
+
+      for (int i = 0; i < _students.length; i++) {
+        final item = _students[i];
+
+        final user = Map<String, dynamic>.from((item['user'] ?? {}) as Map);
+
+        final uid = (user['uid'] ?? item['studentId'] ?? '').toString();
+        final fullName = (user['fullName'] ?? '').toString();
+        final email = (user['email'] ?? '').toString();
+        final studentCode = _studentCodeFromUser(user);
+        final className = _studentClassNameFromUser(user);
+
+        sheet.appendRow([
+          ex.IntCellValue(i + 1),
+          ex.TextCellValue(studentCode),
+          ex.TextCellValue(fullName),
+          ex.TextCellValue(className),
+          ex.TextCellValue(email),
+          ex.TextCellValue(uid),
+        ]);
+      }
+
+      final bytes = excel.encode();
+
+      if (bytes == null) {
+        throw Exception('Không tạo được file Excel');
+      }
+
+      final fileName = 'gv_dssv_${safeCourseName}_$safeClassCode.xlsx';
+
+      await _saveTeacherExcelFile(
+        bytes: Uint8List.fromList(bytes),
+        fileName: fileName,
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Lỗi xuất Excel: $e')));
+    }
+  }
+
+  Future<void> _exportTeacherGradesToExcel() async {
+    if (_students.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Không có sinh viên để xuất bảng điểm')),
+      );
+      return;
+    }
+
+    try {
+      final classCode = (widget.classItem['classCode'] ?? '').toString();
+      final courseName = (widget.classItem['courseName'] ?? 'mon_hoc')
+          .toString();
+
+      final safeClassCode = _safeExportName(classCode);
+      final safeCourseName = _safeExportName(courseName);
+
+      final excel = ex.Excel.createExcel();
+      const sheetName = 'DS_DIEM';
+      final sheet = excel[sheetName];
+
+      if (excel.sheets.containsKey('Sheet1')) {
+        excel.delete('Sheet1');
+      }
+
+      sheet.appendRow([
+        ex.TextCellValue('STT'),
+        ex.TextCellValue('Mã sinh viên'),
+        ex.TextCellValue('Họ tên'),
+        ex.TextCellValue('Lớp hành chính'),
+        ex.TextCellValue('Email'),
+        ex.TextCellValue('UID'),
+        ex.TextCellValue('Điểm chuyên cần'),
+        ex.TextCellValue('Điểm giữa kỳ'),
+      ]);
+
+      for (int i = 0; i < _students.length; i++) {
+        final item = _students[i];
+
+        final user = Map<String, dynamic>.from((item['user'] ?? {}) as Map);
+
+        final studentId = (item['studentId'] ?? user['uid'] ?? '').toString();
+        final uid = (user['uid'] ?? studentId).toString();
+        final fullName = (user['fullName'] ?? '').toString();
+        final email = (user['email'] ?? '').toString();
+        final studentCode = _studentCodeFromUser(user);
+        final className = _studentClassNameFromUser(user);
+
+        final grade = _findGradeByStudent(studentId);
+
+        final scoreProcess = grade?['scoreProcess'];
+        final scoreMid = grade?['scoreMid'];
+
+        sheet.appendRow([
+          ex.IntCellValue(i + 1),
+          ex.TextCellValue(studentCode),
+          ex.TextCellValue(fullName),
+          ex.TextCellValue(className),
+          ex.TextCellValue(email),
+          ex.TextCellValue(uid),
+          ex.TextCellValue(scoreProcess == null ? '' : scoreProcess.toString()),
+          ex.TextCellValue(scoreMid == null ? '' : scoreMid.toString()),
+        ]);
+      }
+
+      final bytes = excel.encode();
+
+      if (bytes == null) {
+        throw Exception('Không tạo được file Excel');
+      }
+
+      final fileName = 'gv_d_dssv_${safeCourseName}_$safeClassCode.xlsx';
+
+      await _saveTeacherExcelFile(
+        bytes: Uint8List.fromList(bytes),
+        fileName: fileName,
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Lỗi xuất bảng điểm: $e')));
+    }
+  }
+
+  String _assignmentScoreOf({
+    required Map<String, dynamic> assignment,
+    required String studentId,
+  }) {
+    final submissionsRaw = (assignment['submissions'] as List?) ?? const [];
+
+    for (final raw in submissionsRaw) {
+      final submission = raw is Map<String, dynamic>
+          ? raw
+          : raw is Map
+          ? Map<String, dynamic>.from(raw)
+          : <String, dynamic>{};
+
+      if ((submission['studentId'] ?? '').toString() == studentId) {
+        final score = submission['assignmentScore'];
+        return score == null ? '' : score.toString();
+      }
+    }
+
+    return '';
+  }
+
+  Future<void> _exportAssignmentScoresToExcel() async {
+    if (_students.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Không có sinh viên để xuất điểm bài tập'),
+        ),
+      );
+      return;
+    }
+
+    if (_assignments.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Không có bài tập để xuất điểm')),
+      );
+      return;
+    }
+
+    try {
+      final classCode = (widget.classItem['classCode'] ?? '').toString();
+      final courseName = (widget.classItem['courseName'] ?? 'mon_hoc')
+          .toString();
+
+      final safeClassCode = _safeExportName(classCode);
+      final safeCourseName = _safeExportName(courseName);
+
+      final excel = ex.Excel.createExcel();
+      const sheetName = 'DIEM_BAI_TAP';
+      final sheet = excel[sheetName];
+
+      if (excel.sheets.containsKey('Sheet1')) {
+        excel.delete('Sheet1');
+      }
+
+      final header = <ex.CellValue>[
+        ex.TextCellValue('STT'),
+        ex.TextCellValue('Mã sinh viên'),
+        ex.TextCellValue('Họ tên'),
+        ex.TextCellValue('Lớp hành chính'),
+        ex.TextCellValue('Email'),
+        ex.TextCellValue('UID'),
+      ];
+
+      for (int i = 0; i < _assignments.length; i++) {
+        final title = (_assignments[i]['title'] ?? 'BT${i + 1}').toString();
+        header.add(ex.TextCellValue('BT${i + 1} - $title'));
+      }
+
+      sheet.appendRow(header);
+
+      for (int i = 0; i < _students.length; i++) {
+        final item = _students[i];
+        final user = Map<String, dynamic>.from((item['user'] ?? {}) as Map);
+
+        final studentId = (item['studentId'] ?? user['uid'] ?? '').toString();
+        final uid = (user['uid'] ?? studentId).toString();
+        final fullName = (user['fullName'] ?? '').toString();
+        final email = (user['email'] ?? '').toString();
+        final studentCode = _studentCodeFromUser(user);
+        final className = _studentClassNameFromUser(user);
+
+        final row = <ex.CellValue>[
+          ex.IntCellValue(i + 1),
+          ex.TextCellValue(studentCode),
+          ex.TextCellValue(fullName),
+          ex.TextCellValue(className),
+          ex.TextCellValue(email),
+          ex.TextCellValue(uid),
+        ];
+
+        for (final assignment in _assignments) {
+          row.add(
+            ex.TextCellValue(
+              _assignmentScoreOf(assignment: assignment, studentId: studentId),
+            ),
+          );
+        }
+
+        sheet.appendRow(row);
+      }
+
+      final bytes = excel.encode();
+
+      if (bytes == null) {
+        throw Exception('Không tạo được file Excel');
+      }
+
+      final fileName = 'gv_diem_baitap_${safeCourseName}_$safeClassCode.xlsx';
+
+      await _saveTeacherExcelFile(
+        bytes: Uint8List.fromList(bytes),
+        fileName: fileName,
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Lỗi xuất điểm bài tập: $e')));
     }
   }
 
@@ -1244,6 +1813,8 @@ class _TeacherClassDetailScreenState extends State<TeacherClassDetailScreen>
                         classId: widget.classItem['id'].toString(),
                         profile: widget.profile,
                         chatRepo: _chatRepo,
+                        onUploadFile: _repo.uploadFileDetailed,
+                        onDownloadAttachment: _downloadAttachment,
                       ),
                     ],
                   ),
@@ -1253,76 +1824,479 @@ class _TeacherClassDetailScreenState extends State<TeacherClassDetailScreen>
     );
   }
 
-  Widget _buildStudentList(List<Map<String, dynamic>> items) {
-    if (items.isEmpty) {
-      return const Center(
-        child: Text(
-          'Không có dữ liệu.',
-          style: TextStyle(color: Color(0xFF64748B)),
-        ),
-      );
+  String _initials(String name) {
+    final parts = name.trim().split(RegExp(r'\s+'));
+
+    if (parts.isEmpty || parts.first.isEmpty) return '?';
+
+    if (parts.length >= 2) {
+      return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
     }
 
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: items.length,
-      itemBuilder: (context, index) {
-        final item = items[index];
-        final user = Map<String, dynamic>.from((item['user'] ?? {}) as Map);
-        final fullName = (user['fullName'] ?? 'Chưa rõ tên').toString();
-        final avatarUrl = (user['avatarUrl'] ?? '').toString();
-        final studentCode =
-            (user['studentInfo']?['studentCode'] ?? user['uid'] ?? '')
-                .toString();
+    return parts.first[0].toUpperCase();
+  }
 
-        return Container(
-          margin: const EdgeInsets.only(bottom: 16),
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: const Color(0xFFE5E7EB)),
+  Map<String, dynamic> _studentUserFromEnrollment(Map<String, dynamic> item) {
+    final raw = item['user'];
+
+    if (raw is Map<String, dynamic>) return raw;
+    if (raw is Map) return Map<String, dynamic>.from(raw);
+
+    return <String, dynamic>{};
+  }
+
+  Future<void> _openTeacherAddStudentSheet() async {
+    final classId = widget.classItem['id'].toString();
+
+    final selected = await showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) =>
+          _TeacherAddStudentBottomSheet(repo: _repo, classId: classId),
+    );
+
+    if (selected == null) return;
+
+    try {
+      final studentId = (selected['uid'] ?? selected['id'] ?? '').toString();
+
+      if (studentId.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Không tìm thấy ID sinh viên')),
+        );
+        return;
+      }
+
+      await _repo.addStudentToClass(classId: classId, studentId: studentId);
+
+      await _loadData();
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Đã thêm sinh viên vào lớp')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Thêm sinh viên thất bại: $e')));
+    }
+  }
+
+  Future<void> _removeTeacherStudent(Map<String, dynamic> item) async {
+    final user = _studentUserFromEnrollment(item);
+    final studentId = (item['studentId'] ?? user['uid'] ?? '').toString();
+    final name = (user['fullName'] ?? 'Sinh viên').toString();
+
+    if (studentId.isEmpty) return;
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Xóa sinh viên khỏi lớp?'),
+          content: Text(
+            'Sinh viên "$name" sẽ bị xóa khỏi lớp này. Điểm trong lớp cũng sẽ bị xóa.',
           ),
-          child: Row(
-            children: [
-              CircleAvatar(
-                radius: 24,
-                backgroundColor: const Color(0xFFE9E7FA),
-                backgroundImage: avatarUrl.isNotEmpty
-                    ? NetworkImage(avatarUrl)
-                    : null,
-                child: avatarUrl.isEmpty
-                    ? const Icon(Icons.person, color: _primary)
-                    : null,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Hủy'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              style: FilledButton.styleFrom(
+                backgroundColor: Color(0xFFDC2626),
+                foregroundColor: Colors.white,
               ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+              child: const Text('Xóa'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (ok != true) return;
+
+    setState(() {
+      _removingStudentId = studentId;
+    });
+
+    try {
+      await _repo.removeStudentFromClass(
+        classId: widget.classItem['id'].toString(),
+        studentId: studentId,
+      );
+
+      await _loadData();
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Đã xóa sinh viên khỏi lớp')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Xóa sinh viên thất bại: $e')));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _removingStudentId = null;
+        });
+      }
+    }
+  }
+
+  Widget _buildStudentList(List<Map<String, dynamic>> items) {
+    final adminState = (widget.classItem['adminState'] ?? 'draft').toString();
+    final canManage = adminState != 'archived';
+
+    final q = _studentSearchController.text.trim().toLowerCase();
+
+    final filteredItems = items.where((item) {
+      final user = _studentUserFromEnrollment(item);
+      final fullName = (user['fullName'] ?? '').toString().toLowerCase();
+      final email = (user['email'] ?? '').toString().toLowerCase();
+      final studentCode = _studentCodeFromUser(user).toLowerCase();
+
+      if (q.isEmpty) return true;
+
+      return fullName.contains(q) ||
+          email.contains(q) ||
+          studentCode.contains(q);
+    }).toList();
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(color: const Color(0xFFE5E7EB)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.04),
+                  blurRadius: 14,
+                  offset: const Offset(0, 6),
+                ),
+              ],
+            ),
+            child: Column(
+              children: [
+                Row(
                   children: [
-                    Text(
-                      fullName,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w900,
-                        color: Color(0xFF0F172A),
+                    Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEDEBFF),
+                        borderRadius: BorderRadius.circular(14),
                       ),
+                      child: const Icon(Icons.groups_rounded, color: _primary),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'ID: $studentCode',
-                      style: const TextStyle(
-                        fontSize: 15,
-                        color: Color(0xFF64748B),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Danh sách sinh viên',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w900,
+                              color: Color(0xFF0F172A),
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            '${items.length} sinh viên trong lớp',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF64748B),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
                 ),
-              ),
-            ],
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Expanded(
+                      child: SizedBox(
+                        height: 44,
+                        child: ElevatedButton.icon(
+                          onPressed: items.isEmpty
+                              ? null
+                              : _exportTeacherStudentsToExcel,
+                          icon: const Icon(Icons.download_rounded, size: 18),
+                          label: const Text('Xuất DSSV'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: _primary,
+                            foregroundColor: Colors.white,
+                            disabledBackgroundColor: const Color(0xFFE2E8F0),
+                            disabledForegroundColor: const Color(0xFF94A3B8),
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            textStyle: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: SizedBox(
+                        height: 44,
+                        child: ElevatedButton.icon(
+                          onPressed: canManage
+                              ? _openTeacherAddStudentSheet
+                              : null,
+                          icon: const Icon(
+                            Icons.person_add_alt_1_rounded,
+                            size: 18,
+                          ),
+                          label: const Text('Thêm SV'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF16A34A),
+                            foregroundColor: Colors.white,
+                            disabledBackgroundColor: const Color(0xFFE2E8F0),
+                            disabledForegroundColor: const Color(0xFF94A3B8),
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            textStyle: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                if (!canManage) ...[
+                  const SizedBox(height: 10),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF7ED),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: const Color(0xFFFED7AA)),
+                    ),
+                    child: const Text(
+                      'Lớp đã kết thúc, không thể thêm hoặc xóa sinh viên.',
+                      style: TextStyle(
+                        color: Color(0xFF9A3412),
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ),
-        );
-      },
+        ),
+
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+          child: TextField(
+            controller: _studentSearchController,
+            onChanged: (_) => setState(() {}),
+            decoration: InputDecoration(
+              hintText: 'Tìm theo tên, email hoặc mã sinh viên...',
+              prefixIcon: const Icon(Icons.search_rounded),
+              filled: true,
+              fillColor: Colors.white,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 14,
+                vertical: 13,
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(18),
+                borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(18),
+                borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+              ),
+            ),
+          ),
+        ),
+
+        Expanded(
+          child: filteredItems.isEmpty
+              ? const Center(
+                  child: Text(
+                    'Không có sinh viên phù hợp.',
+                    style: TextStyle(color: Color(0xFF64748B)),
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                  itemCount: filteredItems.length,
+                  itemBuilder: (context, index) {
+                    final item = filteredItems[index];
+                    final user = _studentUserFromEnrollment(item);
+
+                    final fullName = (user['fullName'] ?? 'Chưa rõ tên')
+                        .toString();
+                    final avatarUrl = (user['avatarUrl'] ?? '').toString();
+                    final email = (user['email'] ?? '').toString();
+                    final studentCode = _studentCodeFromUser(user);
+                    final className = _studentClassNameFromUser(user);
+                    final studentId = (item['studentId'] ?? user['uid'] ?? '')
+                        .toString();
+
+                    final isRemoving = _removingStudentId == studentId;
+
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 14),
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(22),
+                        border: Border.all(color: const Color(0xFFE5E7EB)),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.035),
+                            blurRadius: 14,
+                            offset: const Offset(0, 6),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        children: [
+                          CircleAvatar(
+                            radius: 26,
+                            backgroundColor: const Color(0xFFEDEBFF),
+                            backgroundImage: avatarUrl.isNotEmpty
+                                ? NetworkImage(avatarUrl)
+                                : null,
+                            child: avatarUrl.isEmpty
+                                ? Text(
+                                    _initials(fullName),
+                                    style: const TextStyle(
+                                      color: _primary,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  )
+                                : null,
+                          ),
+                          const SizedBox(width: 13),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  fullName,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w900,
+                                    color: Color(0xFF0F172A),
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                if (studentCode.isNotEmpty)
+                                  Text(
+                                    'MSV: $studentCode',
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      color: Color(0xFF64748B),
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                if (className.isNotEmpty)
+                                  Text(
+                                    'Lớp: $className',
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      color: Color(0xFF64748B),
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                if (email.isNotEmpty)
+                                  Text(
+                                    email,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      color: Color(0xFF94A3B8),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Material(
+                            color: canManage
+                                ? const Color(0xFFFFE4E6)
+                                : const Color(0xFFF1F5F9),
+                            borderRadius: BorderRadius.circular(14),
+                            child: InkWell(
+                              onTap: canManage && !isRemoving
+                                  ? () => _removeTeacherStudent(item)
+                                  : null,
+                              borderRadius: BorderRadius.circular(14),
+                              child: Container(
+                                width: 42,
+                                height: 42,
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(
+                                    color: canManage
+                                        ? const Color(0xFFFECACA)
+                                        : const Color(0xFFE2E8F0),
+                                  ),
+                                ),
+                                child: isRemoving
+                                    ? const SizedBox(
+                                        width: 18,
+                                        height: 18,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : Icon(
+                                        Icons.person_remove_rounded,
+                                        color: canManage
+                                            ? const Color(0xFFDC2626)
+                                            : const Color(0xFFCBD5E1),
+                                        size: 20,
+                                      ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ],
     );
   }
 
@@ -2204,26 +3178,127 @@ class _TeacherClassDetailScreenState extends State<TeacherClassDetailScreen>
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Có ${_assignments.length} bài tập • ${_totalSubmissions()} lượt nộp',
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF475467),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(color: const Color(0xFFE5E7EB)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.04),
+                  blurRadius: 14,
+                  offset: const Offset(0, 6),
                 ),
-              ),
-              ElevatedButton.icon(
-                onPressed: _showCreateAssignmentSheet,
-                icon: const Icon(Icons.add),
-                label: const Text('Tạo bài tập'),
-              ),
-            ],
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEDEBFF),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: const Icon(
+                        Icons.assignment_rounded,
+                        color: _primary,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Quản lý bài tập',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w900,
+                              color: Color(0xFF0F172A),
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            '${_assignments.length} bài tập • ${_totalSubmissions()} lượt nộp',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF64748B),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 14),
+
+                Row(
+                  children: [
+                    Expanded(
+                      child: SizedBox(
+                        height: 44,
+                        child: ElevatedButton.icon(
+                          onPressed: _assignments.isEmpty
+                              ? null
+                              : _exportAssignmentScoresToExcel,
+                          icon: const Icon(Icons.download_rounded, size: 18),
+                          label: const Text('Xuất điểm'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF16A34A),
+                            foregroundColor: Colors.white,
+                            disabledBackgroundColor: const Color(0xFFE2E8F0),
+                            disabledForegroundColor: const Color(0xFF94A3B8),
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            textStyle: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: SizedBox(
+                        height: 44,
+                        child: ElevatedButton.icon(
+                          onPressed: _showCreateAssignmentSheet,
+                          icon: const Icon(Icons.add_rounded, size: 20),
+                          label: const Text('Tạo bài tập'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: _primary,
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            textStyle: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
+
         Expanded(
           child: _assignments.isEmpty
               ? const Center(child: Text('Chưa có bài tập'))
@@ -2237,6 +3312,13 @@ class _TeacherClassDetailScreenState extends State<TeacherClassDetailScreen>
                     );
 
                     return Card(
+                      elevation: 0,
+                      color: Colors.white,
+                      margin: const EdgeInsets.only(bottom: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(22),
+                        side: const BorderSide(color: Color(0xFFE5E7EB)),
+                      ),
                       child: Padding(
                         padding: const EdgeInsets.all(14),
                         child: Column(
@@ -2265,6 +3347,7 @@ class _TeacherClassDetailScreenState extends State<TeacherClassDetailScreen>
                                     style: const TextStyle(
                                       fontSize: 16,
                                       fontWeight: FontWeight.w900,
+                                      color: Color(0xFF0F172A),
                                     ),
                                   ),
                                 ),
@@ -2292,14 +3375,32 @@ class _TeacherClassDetailScreenState extends State<TeacherClassDetailScreen>
                               ],
                             ),
                             const SizedBox(height: 8),
-                            Text((item['content'] ?? '').toString()),
-                            const SizedBox(height: 8),
                             Text(
-                              'Hạn nộp: ${_formatDateTime(item['deadline'])}',
+                              (item['content'] ?? '').toString(),
                               style: const TextStyle(
-                                fontWeight: FontWeight.w600,
-                                color: Color(0xFF475467),
+                                color: Color(0xFF475569),
+                                height: 1.35,
                               ),
+                            ),
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                const Icon(
+                                  Icons.schedule_rounded,
+                                  size: 17,
+                                  color: Color(0xFF64748B),
+                                ),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    'Hạn nộp: ${_formatDateTime(item['deadline'])}',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      color: Color(0xFF475467),
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                             const SizedBox(height: 10),
                             _buildSubmissionCountChip(item),
@@ -2956,6 +4057,22 @@ class _TeacherClassDetailScreenState extends State<TeacherClassDetailScreen>
                 ),
               ),
               ElevatedButton.icon(
+                onPressed: _students.isEmpty
+                    ? null
+                    : _exportTeacherGradesToExcel,
+                icon: const Icon(Icons.download_rounded),
+                label: const Text('Xuất điểm'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF16A34A),
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              ElevatedButton.icon(
                 onPressed: () async {
                   final changed = await Navigator.push<bool>(
                     context,
@@ -2971,7 +4088,13 @@ class _TeacherClassDetailScreenState extends State<TeacherClassDetailScreen>
                   }
                 },
                 icon: const Icon(Icons.upload_file_rounded),
-                label: const Text('Import Excel'),
+                label: const Text('Import'),
+                style: ElevatedButton.styleFrom(
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
               ),
             ],
           ),
@@ -3145,6 +4268,7 @@ class _TeacherClassDetailScreenState extends State<TeacherClassDetailScreen>
 
   @override
   void dispose() {
+    _studentSearchController.dispose();
     _tabController.dispose();
     super.dispose();
   }
@@ -3154,11 +4278,16 @@ class _TeacherClassChatTab extends StatefulWidget {
   final String classId;
   final Map<String, dynamic> profile;
   final TeacherChatRepository chatRepo;
+  final Future<Map<String, dynamic>> Function(File file) onUploadFile;
+  final Future<void> Function(Map<String, dynamic> attachment)
+  onDownloadAttachment;
 
   const _TeacherClassChatTab({
     required this.classId,
     required this.profile,
     required this.chatRepo,
+    required this.onUploadFile,
+    required this.onDownloadAttachment,
   });
 
   @override
@@ -3170,6 +4299,426 @@ class _TeacherClassChatTabState extends State<_TeacherClassChatTab> {
   final ScrollController _scrollCtrl = ScrollController();
 
   bool _sending = false;
+  bool _uploadingAttachment = false;
+  List<Map<String, dynamic>> _pendingAttachments = [];
+
+  Future<void> _toggleLike(
+    Map<String, dynamic> item, {
+    required bool isLocked,
+  }) async {
+    if (isLocked) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: const Color(0xFF0F172A),
+          margin: const EdgeInsets.all(16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+          content: const Row(
+            children: [
+              Icon(Icons.lock_rounded, color: Colors.white, size: 18),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Chat đang khóa, không thể thả cảm xúc.',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+      return;
+    }
+
+    final messageId = (item['id'] ?? '').toString();
+    final myUid = FirebaseAuth.instance.currentUser?.uid ?? '';
+
+    if (messageId.isEmpty || myUid.isEmpty) return;
+
+    final likedByRaw = item['likedBy'];
+    final likedBy = likedByRaw is List
+        ? likedByRaw.map((e) => e.toString()).toList()
+        : <String>[];
+
+    final liked = likedBy.contains(myUid);
+
+    try {
+      await widget.chatRepo.toggleLikeMessage(
+        classId: widget.classId,
+        messageId: messageId,
+        uid: myUid,
+        liked: liked,
+      );
+    } catch (_) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: const Color(0xFFDC2626),
+          margin: const EdgeInsets.all(16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+          content: const Row(
+            children: [
+              Icon(Icons.error_outline_rounded, color: Colors.white, size: 18),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Không thể thả cảm xúc lúc này.',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _pickChatFile({required bool isLocked}) async {
+    if (isLocked) {
+      _showChatSnack(
+        icon: Icons.lock_rounded,
+        message: 'Chat đang khóa, không thể gửi tệp.',
+        backgroundColor: const Color(0xFF0F172A),
+      );
+      return;
+    }
+
+    if (_uploadingAttachment || _sending) return;
+
+    final picked = await FilePicker.pickFiles(
+      allowMultiple: false,
+      type: FileType.any,
+    );
+
+    if (picked == null || picked.files.isEmpty) return;
+
+    final path = picked.files.single.path;
+    if (path == null || path.isEmpty) {
+      _showChatSnack(
+        icon: Icons.error_outline_rounded,
+        message: 'Không đọc được file đã chọn.',
+        backgroundColor: const Color(0xFFDC2626),
+      );
+      return;
+    }
+
+    setState(() {
+      _uploadingAttachment = true;
+    });
+
+    try {
+      final uploaded = await widget.onUploadFile(File(path));
+
+      final attachment = <String, dynamic>{
+        'url': (uploaded['url'] ?? '').toString(),
+        'downloadUrl': uploaded['downloadUrl']?.toString(),
+        'publicId': uploaded['publicId']?.toString(),
+        'resourceType': (uploaded['resourceType'] ?? 'raw').toString(),
+        'originalName': (uploaded['originalName'] ?? picked.files.single.name)
+            .toString(),
+        'format': uploaded['format']?.toString(),
+        'size': picked.files.single.size,
+      };
+
+      if ((attachment['url'] ?? '').toString().isEmpty) {
+        throw Exception('Upload không trả về URL');
+      }
+
+      if (!mounted) return;
+
+      setState(() {
+        _pendingAttachments = [attachment];
+      });
+    } catch (_) {
+      if (!mounted) return;
+
+      _showChatSnack(
+        icon: Icons.error_outline_rounded,
+        message: 'Upload file thất bại.',
+        backgroundColor: const Color(0xFFDC2626),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _uploadingAttachment = false;
+        });
+      }
+    }
+  }
+
+  void _removePendingAttachment() {
+    setState(() {
+      _pendingAttachments.clear();
+    });
+  }
+
+  void _showChatSnack({
+    required IconData icon,
+    required String message,
+    required Color backgroundColor,
+  }) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: backgroundColor,
+        margin: const EdgeInsets.all(16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        content: Row(
+          children: [
+            Icon(icon, color: Colors.white, size: 18),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                message,
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<Map<String, dynamic>> _messageAttachments(Map<String, dynamic> item) {
+    final raw = item['attachments'];
+    if (raw is! List) return [];
+
+    return raw
+        .map((e) {
+          if (e is Map<String, dynamic>) return Map<String, dynamic>.from(e);
+          if (e is Map) return Map<String, dynamic>.from(e);
+          return <String, dynamic>{};
+        })
+        .where(
+          (e) => (e['url'] ?? e['downloadUrl'] ?? '').toString().isNotEmpty,
+        )
+        .toList();
+  }
+
+  String _attachmentName(Map<String, dynamic> item) {
+    final originalName = (item['originalName'] ?? '').toString().trim();
+    if (originalName.isNotEmpty) return originalName;
+
+    final url = (item['url'] ?? item['fileUrl'] ?? item['downloadUrl'] ?? '')
+        .toString()
+        .trim();
+
+    final uri = Uri.tryParse(url);
+
+    if (uri != null && uri.pathSegments.isNotEmpty) {
+      final last = uri.pathSegments.last;
+      final decoded = Uri.decodeComponent(last);
+
+      if (decoded.trim().isNotEmpty) {
+        return decoded.split('?').first;
+      }
+    }
+
+    return 'Tệp đính kèm';
+  }
+
+  bool _isImageUrl(String url) {
+    final lower = url.toLowerCase();
+
+    return lower.endsWith('.jpg') ||
+        lower.endsWith('.jpeg') ||
+        lower.endsWith('.png') ||
+        lower.endsWith('.webp') ||
+        lower.endsWith('.gif') ||
+        lower.contains('/image/upload/');
+  }
+
+  bool _isPdfUrl(String url) {
+    final lower = url.toLowerCase();
+    return lower.endsWith('.pdf') || lower.contains('.pdf?');
+  }
+
+  void _showImagePreview(String imageUrl) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return Dialog(
+          insetPadding: const EdgeInsets.all(16),
+          child: Stack(
+            children: [
+              InteractiveViewer(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: Image.network(
+                    imageUrl,
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, __, ___) => const Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Text('Không tải được ảnh'),
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                top: 8,
+                right: 8,
+                child: IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildPendingAttachmentPreview() {
+    if (_pendingAttachments.isEmpty) return const SizedBox.shrink();
+
+    final file = _pendingAttachments.first;
+    final name = _attachmentName(file);
+    final url = (file['url'] ?? '').toString();
+    final isImage = _isImageUrl(url);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Row(
+        children: [
+          if (isImage)
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: Image.network(
+                url,
+                width: 44,
+                height: 44,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => const Icon(Icons.image_rounded),
+              ),
+            )
+          else
+            const Icon(Icons.attach_file_rounded, color: Color(0xFF1B2A8A)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.w800),
+            ),
+          ),
+          IconButton(
+            onPressed: _removePendingAttachment,
+            icon: const Icon(Icons.close_rounded),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMessageAttachments(
+    List<Map<String, dynamic>> attachments, {
+    required bool mine,
+  }) {
+    if (attachments.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: attachments.map((attachment) {
+        final url = (attachment['url'] ?? '').toString();
+        final name = _attachmentName(attachment);
+        final isImage = _isImageUrl(url);
+        final isPdf =
+            _isPdfUrl(url) ||
+            (attachment['format'] ?? '').toString().toLowerCase() == 'pdf';
+
+        if (isImage) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: InkWell(
+              onTap: () => _showImagePreview(url),
+              borderRadius: BorderRadius.circular(14),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(14),
+                child: Image.network(
+                  url,
+                  width: 210,
+                  height: 150,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => Container(
+                    width: 210,
+                    height: 120,
+                    alignment: Alignment.center,
+                    color: const Color(0xFFF1F5F9),
+                    child: const Icon(Icons.broken_image_rounded),
+                  ),
+                ),
+              ),
+            ),
+          );
+        }
+
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: InkWell(
+            onTap: () => widget.onDownloadAttachment(attachment),
+            borderRadius: BorderRadius.circular(14),
+            child: Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: mine
+                    ? Colors.white.withOpacity(0.12)
+                    : const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: mine ? Colors.white24 : const Color(0xFFE2E8F0),
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    isPdf
+                        ? Icons.picture_as_pdf_rounded
+                        : Icons.insert_drive_file_rounded,
+                    color: isPdf
+                        ? const Color(0xFFDC2626)
+                        : (mine ? Colors.white : const Color(0xFF1B2A8A)),
+                  ),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: mine ? Colors.white : const Color(0xFF0F172A),
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Icon(
+                    Icons.download_rounded,
+                    size: 18,
+                    color: mine ? Colors.white70 : const Color(0xFF64748B),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
 
   @override
   void dispose() {
@@ -3180,7 +4729,10 @@ class _TeacherClassChatTabState extends State<_TeacherClassChatTab> {
 
   Future<void> _send() async {
     final text = _messageCtrl.text.trim();
-    if (text.isEmpty || _sending) return;
+
+    if ((text.isEmpty && _pendingAttachments.isEmpty) || _sending) return;
+
+    final attachments = List<Map<String, dynamic>>.from(_pendingAttachments);
 
     setState(() {
       _sending = true;
@@ -3191,25 +4743,22 @@ class _TeacherClassChatTabState extends State<_TeacherClassChatTab> {
         classId: widget.classId,
         text: text,
         profile: widget.profile,
+        attachments: attachments,
       );
 
       _messageCtrl.clear();
 
-      await Future.delayed(const Duration(milliseconds: 100));
-
-      if (_scrollCtrl.hasClients) {
-        _scrollCtrl.animateTo(
-          _scrollCtrl.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 250),
-          curve: Curves.easeOut,
-        );
-      }
-    } catch (e) {
+      setState(() {
+        _pendingAttachments.clear();
+      });
+    } catch (_) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Gửi tin nhắn thất bại: $e')));
+      _showChatSnack(
+        icon: Icons.error_outline_rounded,
+        message: 'Gửi tin nhắn thất bại.',
+        backgroundColor: const Color(0xFFDC2626),
+      );
     } finally {
       if (mounted) {
         setState(() {
@@ -3385,18 +4934,9 @@ class _TeacherClassChatTabState extends State<_TeacherClassChatTab> {
                     );
                   }
 
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (_scrollCtrl.hasClients) {
-                      _scrollCtrl.animateTo(
-                        _scrollCtrl.position.maxScrollExtent,
-                        duration: const Duration(milliseconds: 250),
-                        curve: Curves.easeOut,
-                      );
-                    }
-                  });
-
                   return ListView.builder(
                     controller: _scrollCtrl,
+                    reverse: true,
                     padding: const EdgeInsets.all(16),
                     itemCount: items.length,
                     itemBuilder: (_, i) {
@@ -3406,114 +4946,217 @@ class _TeacherClassChatTabState extends State<_TeacherClassChatTab> {
                       final teacher = _isTeacher(item);
                       final deleted = item['deleted'] == true;
 
+                      final myUid =
+                          FirebaseAuth.instance.currentUser?.uid ?? '';
+                      final likedByRaw = item['likedBy'];
+                      final likedBy = likedByRaw is List
+                          ? likedByRaw.map((e) => e.toString()).toList()
+                          : <String>[];
+
+                      final liked = likedBy.contains(myUid);
+                      final likeCount = likedBy.length;
+                      final attachments = _messageAttachments(item);
+                      final text = (item['text'] ?? '').toString();
+
                       return Align(
                         alignment: mine
                             ? Alignment.centerRight
                             : Alignment.centerLeft,
-                        child: Container(
-                          margin: const EdgeInsets.only(bottom: 10),
-                          padding: const EdgeInsets.all(12),
-                          constraints: const BoxConstraints(maxWidth: 280),
-                          decoration: BoxDecoration(
-                            color: deleted
-                                ? const Color(0xFFF1F5F9)
-                                : mine
-                                ? const Color(0xFF1B2A8A)
-                                : teacher
-                                ? const Color(0xFFFFF7ED)
-                                : Colors.white,
-                            borderRadius: BorderRadius.circular(16),
-                            border: mine || deleted
-                                ? null
-                                : Border.all(color: Colors.black12),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                        child: GestureDetector(
+                          onDoubleTap: deleted
+                              ? null
+                              : () => _toggleLike(item, isLocked: isLocked),
+                          child: Stack(
+                            clipBehavior: Clip.none,
                             children: [
-                              if (!mine && !deleted)
-                                Row(
+                              Container(
+                                margin: const EdgeInsets.only(bottom: 16),
+                                padding: const EdgeInsets.all(12),
+                                constraints: const BoxConstraints(
+                                  maxWidth: 280,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: deleted
+                                      ? const Color(0xFFF1F5F9)
+                                      : mine
+                                      ? const Color(0xFF1B2A8A)
+                                      : teacher
+                                      ? const Color(0xFFFFF7ED)
+                                      : Colors.white,
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: mine || deleted
+                                      ? null
+                                      : Border.all(color: Colors.black12),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Expanded(
-                                      child: Text(
-                                        (item['senderName'] ?? 'Người dùng')
-                                            .toString(),
+                                    if (!mine && !deleted)
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              (item['senderName'] ??
+                                                      'Người dùng')
+                                                  .toString(),
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w800,
+                                                color: teacher
+                                                    ? Colors.deepOrange
+                                                    : const Color(0xFF1B2A8A),
+                                              ),
+                                            ),
+                                          ),
+                                          if (teacher)
+                                            Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 8,
+                                                    vertical: 3,
+                                                  ),
+                                              decoration: BoxDecoration(
+                                                color: const Color(0xFFFFEDD5),
+                                                borderRadius:
+                                                    BorderRadius.circular(999),
+                                              ),
+                                              child: const Text(
+                                                'Giảng viên',
+                                                style: TextStyle(
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.w800,
+                                                  color: Colors.deepOrange,
+                                                ),
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+
+                                    if (!mine && !deleted)
+                                      const SizedBox(height: 4),
+
+                                    if (deleted)
+                                      const Text(
+                                        'Tin nhắn đã bị xóa',
                                         style: TextStyle(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w800,
-                                          color: teacher
-                                              ? Colors.deepOrange
-                                              : const Color(0xFF1B2A8A),
+                                          color: Color(0xFF64748B),
+                                          fontSize: 14,
+                                          fontStyle: FontStyle.italic,
+                                          height: 1.35,
                                         ),
+                                      )
+                                    else ...[
+                                      _buildMessageAttachments(
+                                        attachments,
+                                        mine: mine,
                                       ),
-                                    ),
-                                    if (teacher)
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 8,
-                                          vertical: 3,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: const Color(0xFFFFEDD5),
-                                          borderRadius: BorderRadius.circular(
-                                            999,
-                                          ),
-                                        ),
-                                        child: const Text(
-                                          'Giảng viên',
+                                      if (text.isNotEmpty)
+                                        Text(
+                                          text,
                                           style: TextStyle(
-                                            fontSize: 10,
-                                            fontWeight: FontWeight.w800,
-                                            color: Colors.deepOrange,
+                                            color: mine
+                                                ? Colors.white
+                                                : Colors.black87,
+                                            fontSize: 14,
+                                            height: 1.35,
                                           ),
                                         ),
-                                      ),
+                                    ],
+
+                                    const SizedBox(height: 6),
+
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.end,
+                                      children: [
+                                        if (!deleted)
+                                          InkWell(
+                                            onTap: () => _deleteMessage(item),
+                                            child: const Padding(
+                                              padding: EdgeInsets.only(
+                                                right: 8,
+                                              ),
+                                              child: Icon(
+                                                Icons.delete_outline_rounded,
+                                                size: 16,
+                                                color: Colors.redAccent,
+                                              ),
+                                            ),
+                                          ),
+                                        Text(
+                                          _formatTime(item['createdAt']),
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: mine
+                                                ? Colors.white70
+                                                : const Color(0xFF94A3B8),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ],
                                 ),
-                              if (!mine && !deleted) const SizedBox(height: 4),
-                              Text(
-                                deleted
-                                    ? 'Tin nhắn đã bị xóa'
-                                    : (item['text'] ?? '').toString(),
-                                style: TextStyle(
-                                  color: deleted
-                                      ? const Color(0xFF64748B)
-                                      : mine
-                                      ? Colors.white
-                                      : Colors.black87,
-                                  fontSize: 14,
-                                  fontStyle: deleted
-                                      ? FontStyle.italic
-                                      : FontStyle.normal,
-                                  height: 1.35,
-                                ),
                               ),
-                              const SizedBox(height: 6),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.end,
-                                children: [
-                                  if (!deleted)
-                                    InkWell(
-                                      onTap: () => _deleteMessage(item),
-                                      child: const Padding(
-                                        padding: EdgeInsets.only(right: 8),
-                                        child: Icon(
-                                          Icons.delete_outline_rounded,
-                                          size: 16,
-                                          color: Colors.redAccent,
+
+                              if (!deleted)
+                                Positioned(
+                                  right: mine ? 6 : null,
+                                  left: mine ? null : 6,
+                                  bottom: -10,
+                                  child: InkWell(
+                                    onTap: () =>
+                                        _toggleLike(item, isLocked: isLocked),
+                                    borderRadius: BorderRadius.circular(999),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 7,
+                                        vertical: 4,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        borderRadius: BorderRadius.circular(
+                                          999,
                                         ),
+                                        border: Border.all(
+                                          color: const Color(0xFFE2E8F0),
+                                        ),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Colors.black.withOpacity(
+                                              0.08,
+                                            ),
+                                            blurRadius: 8,
+                                            offset: const Offset(0, 3),
+                                          ),
+                                        ],
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            liked
+                                                ? Icons.thumb_up_alt_rounded
+                                                : Icons.thumb_up_alt_outlined,
+                                            size: 15,
+                                            color: liked
+                                                ? const Color(0xFF2563EB)
+                                                : const Color(0xFF94A3B8),
+                                          ),
+                                          if (likeCount > 0) ...[
+                                            const SizedBox(width: 3),
+                                            Text(
+                                              '$likeCount',
+                                              style: const TextStyle(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w800,
+                                                color: Color(0xFF334155),
+                                              ),
+                                            ),
+                                          ],
+                                        ],
                                       ),
                                     ),
-                                  Text(
-                                    _formatTime(item['createdAt']),
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: mine
-                                          ? Colors.white70
-                                          : const Color(0xFF94A3B8),
-                                    ),
                                   ),
-                                ],
-                              ),
+                                ),
                             ],
                           ),
                         ),
@@ -3531,70 +5174,92 @@ class _TeacherClassChatTabState extends State<_TeacherClassChatTab> {
                   color: Color(0xFFF8FAFC),
                   border: Border(top: BorderSide(color: Color(0xFFE2E8F0))),
                 ),
-                child: Row(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _messageCtrl,
-                        minLines: 1,
-                        maxLines: 4,
-                        enabled: !isLocked && !_sending,
-                        decoration: InputDecoration(
-                          hintText: isLocked
-                              ? 'Chat đang bị khóa'
-                              : 'Nhắn vào nhóm lớp...',
-                          filled: true,
-                          fillColor: isLocked
-                              ? const Color(0xFFF1F5F9)
-                              : Colors.white,
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 12,
-                          ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(14),
-                            borderSide: const BorderSide(
-                              color: Color(0xFFE2E8F0),
-                            ),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(14),
-                            borderSide: const BorderSide(
-                              color: Color(0xFFE2E8F0),
-                            ),
-                          ),
+                    _buildPendingAttachmentPreview(),
+                    Row(
+                      children: [
+                        IconButton(
+                          onPressed: (_sending || _uploadingAttachment)
+                              ? null
+                              : () => _pickChatFile(isLocked: isLocked),
+                          icon: _uploadingAttachment
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.add_rounded),
+                          color: const Color(0xFF1B2A8A),
+                          tooltip: 'Gửi ảnh/file',
                         ),
-                        onSubmitted: (_) {
-                          if (!isLocked) {
-                            _send();
-                          }
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    SizedBox(
-                      height: 48,
-                      width: 48,
-                      child: FilledButton(
-                        onPressed: (_sending || isLocked) ? null : _send,
-                        style: FilledButton.styleFrom(
-                          backgroundColor: const Color(0xFF1B2A8A),
-                          padding: EdgeInsets.zero,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                        ),
-                        child: _sending
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
+                        Expanded(
+                          child: TextField(
+                            controller: _messageCtrl,
+                            minLines: 1,
+                            maxLines: 4,
+                            enabled: !isLocked && !_sending,
+                            decoration: InputDecoration(
+                              hintText: isLocked
+                                  ? 'Chat đang bị khóa'
+                                  : 'Nhắn vào nhóm lớp...',
+                              filled: true,
+                              fillColor: isLocked
+                                  ? const Color(0xFFF1F5F9)
+                                  : Colors.white,
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 12,
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(14),
+                                borderSide: const BorderSide(
+                                  color: Color(0xFFE2E8F0),
                                 ),
-                              )
-                            : const Icon(Icons.send_rounded),
-                      ),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(14),
+                                borderSide: const BorderSide(
+                                  color: Color(0xFFE2E8F0),
+                                ),
+                              ),
+                            ),
+                            onSubmitted: (_) {
+                              if (!isLocked) {
+                                _send();
+                              }
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        SizedBox(
+                          height: 48,
+                          width: 48,
+                          child: FilledButton(
+                            onPressed: (_sending || isLocked) ? null : _send,
+                            style: FilledButton.styleFrom(
+                              backgroundColor: const Color(0xFF1B2A8A),
+                              padding: EdgeInsets.zero,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                            ),
+                            child: _sending
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Icon(Icons.send_rounded),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -3603,6 +5268,331 @@ class _TeacherClassChatTabState extends State<_TeacherClassChatTab> {
           ],
         );
       },
+    );
+  }
+}
+
+class _TeacherAddStudentBottomSheet extends StatefulWidget {
+  final TeacherRepository repo;
+  final String classId;
+
+  const _TeacherAddStudentBottomSheet({
+    required this.repo,
+    required this.classId,
+  });
+
+  @override
+  State<_TeacherAddStudentBottomSheet> createState() =>
+      _TeacherAddStudentBottomSheetState();
+}
+
+class _TeacherAddStudentBottomSheetState
+    extends State<_TeacherAddStudentBottomSheet> {
+  static const _primary = Color(0xFF1B2A8A);
+
+  final TextEditingController _searchCtrl = TextEditingController();
+
+  bool _loading = true;
+  List<Map<String, dynamic>> _students = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadStudents();
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadStudents({String? q}) async {
+    setState(() {
+      _loading = true;
+    });
+
+    try {
+      final data = await widget.repo.getAvailableStudentsForClass(
+        classId: widget.classId,
+        q: q,
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _students = data;
+      });
+    } catch (_) {
+      if (!mounted) return;
+
+      setState(() {
+        _students = [];
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+        });
+      }
+    }
+  }
+
+  String _initials(String name) {
+    final parts = name.trim().split(RegExp(r'\s+'));
+
+    if (parts.isEmpty || parts.first.isEmpty) return '?';
+
+    if (parts.length >= 2) {
+      return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
+    }
+
+    return parts.first[0].toUpperCase();
+  }
+
+  String _studentSubtitle(Map<String, dynamic> student) {
+    final raw = student['studentInfo'];
+
+    final studentInfo = raw is Map<String, dynamic>
+        ? raw
+        : raw is Map
+        ? Map<String, dynamic>.from(raw)
+        : <String, dynamic>{};
+
+    final studentCode = (studentInfo['studentCode'] ?? '').toString();
+    final className = (studentInfo['className'] ?? '').toString();
+    final year = (studentInfo['year'] ?? '').toString();
+
+    final parts = <String>[];
+
+    if (studentCode.isNotEmpty) parts.add(studentCode);
+    if (className.isNotEmpty) parts.add(className);
+    if (year.isNotEmpty) parts.add('Năm $year');
+
+    return parts.isEmpty ? 'Không có thông tin sinh viên' : parts.join(' • ');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: bottomInset),
+      child: Container(
+        height: MediaQuery.of(context).size.height * 0.78,
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+        ),
+        child: Column(
+          children: [
+            const SizedBox(height: 12),
+            Container(
+              width: 54,
+              height: 6,
+              decoration: BoxDecoration(
+                color: const Color(0xFFD8DEE8),
+                borderRadius: BorderRadius.circular(999),
+              ),
+            ),
+            const SizedBox(height: 18),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+              child: Row(
+                children: [
+                  Container(
+                    width: 50,
+                    height: 50,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEDEFF6),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: const Icon(
+                      Icons.person_add_alt_1_rounded,
+                      color: _primary,
+                      size: 27,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text(
+                      'Thêm sinh viên',
+                      style: TextStyle(
+                        fontSize: 23,
+                        fontWeight: FontWeight.w900,
+                        color: Color(0xFF0F172A),
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(
+                      Icons.close_rounded,
+                      color: Color(0xFF64748B),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+              child: TextField(
+                controller: _searchCtrl,
+                decoration: InputDecoration(
+                  hintText: 'Tìm theo tên, email hoặc MSV',
+                  prefixIcon: const Icon(Icons.search_rounded),
+                  suffixIcon: IconButton(
+                    onPressed: () => _loadStudents(q: _searchCtrl.text.trim()),
+                    icon: const Icon(
+                      Icons.arrow_forward_rounded,
+                      color: _primary,
+                    ),
+                  ),
+                  filled: true,
+                  fillColor: const Color(0xFFF8FAFC),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(18),
+                    borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(18),
+                    borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(18),
+                    borderSide: const BorderSide(color: _primary, width: 1.4),
+                  ),
+                ),
+                onSubmitted: (v) => _loadStudents(q: v.trim()),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Expanded(
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _students.isEmpty
+                  ? const Center(
+                      child: Text(
+                        'Không có sinh viên phù hợp',
+                        style: TextStyle(
+                          color: Color(0xFF64748B),
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    )
+                  : ListView.separated(
+                      padding: const EdgeInsets.fromLTRB(18, 4, 18, 18),
+                      itemCount: _students.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 10),
+                      itemBuilder: (_, index) {
+                        final student = _students[index];
+                        final fullName = (student['fullName'] ?? 'Chưa có tên')
+                            .toString();
+                        final subtitle = _studentSubtitle(student);
+                        final email = (student['email'] ?? '').toString();
+
+                        return Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            border: Border.all(color: const Color(0xFFE2E8F0)),
+                            borderRadius: BorderRadius.circular(18),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.035),
+                                blurRadius: 14,
+                                offset: const Offset(0, 6),
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            children: [
+                              CircleAvatar(
+                                radius: 24,
+                                backgroundColor: const Color(0xFFEDEFF6),
+                                child: Text(
+                                  _initials(fullName),
+                                  style: const TextStyle(
+                                    color: _primary,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      fullName,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        color: Color(0xFF0F172A),
+                                        fontSize: 15.5,
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      subtitle,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        color: Color(0xFF64748B),
+                                        fontSize: 12.5,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    if (email.isNotEmpty)
+                                      Text(
+                                        email,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          color: Color(0xFF94A3B8),
+                                          fontSize: 12.5,
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              SizedBox(
+                                height: 38,
+                                child: FilledButton(
+                                  onPressed: () {
+                                    Navigator.pop(context, student);
+                                  },
+                                  style: FilledButton.styleFrom(
+                                    backgroundColor: _primary,
+                                    foregroundColor: Colors.white,
+                                    elevation: 0,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 14,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(13),
+                                    ),
+                                  ),
+                                  child: const Text(
+                                    'Thêm',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

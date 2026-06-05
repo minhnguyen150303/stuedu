@@ -8,16 +8,274 @@ function toISOStringSafe(value) {
     return value;
 }
 
+function uniqueArray(items) {
+    return [...new Set((items || []).filter(Boolean).map((x) => x.toString()))];
+}
+
+async function getUsersByIds(userIds = []) {
+    const ids = uniqueArray(userIds);
+    if (ids.length === 0) return [];
+
+    const users = [];
+
+    for (const uid of ids) {
+        const snap = await db.collection("users").doc(uid).get();
+        if (!snap.exists) continue;
+
+        const user = snap.data() || {};
+        if (user.isActive === false || user.disabled === true) continue;
+
+        users.push({
+            uid: snap.id,
+            ...user,
+        });
+    }
+
+    return users;
+}
+
+async function getUsersByRoles(roles = []) {
+    const roleList = uniqueArray(roles);
+    if (roleList.length === 0) return [];
+
+    const map = new Map();
+
+    for (const role of roleList) {
+        const snap = await db
+            .collection("users")
+            .where("role", "==", role)
+            .get();
+
+        snap.forEach((doc) => {
+            const user = doc.data() || {};
+            if (user.isActive === false || user.disabled === true) return;
+
+            map.set(doc.id, {
+                uid: doc.id,
+                ...user,
+            });
+        });
+    }
+
+    return [...map.values()];
+}
+
+async function getAllActiveUsers() {
+    const snap = await db.collection("users").get();
+    const users = [];
+
+    snap.forEach((doc) => {
+        const user = doc.data() || {};
+        if (user.isActive === false || user.disabled === true) return;
+
+        const role = (user.role || "").toString();
+
+        if (!["student", "teacher", "admin", "qlsv"].includes(role)) return;
+
+        users.push({
+            uid: doc.id,
+            ...user,
+        });
+    });
+
+    return users;
+}
+
+async function getUsersByClassIds(classIds = []) {
+    const ids = uniqueArray(classIds);
+    if (ids.length === 0) return [];
+
+    const studentIds = new Set();
+
+    for (const classId of ids) {
+        const snap = await db
+            .collection("enrollments")
+            .where("classId", "==", classId)
+            .where("status", "==", "approved")
+            .get();
+
+        snap.forEach((doc) => {
+            const data = doc.data() || {};
+            if (data.studentId) {
+                studentIds.add(data.studentId.toString());
+            }
+        });
+    }
+
+    return getUsersByIds([...studentIds]);
+}
+
+async function resolveTargets(data) {
+    const targetType = (data.targetType || data.audience || "all").toString();
+
+    if (targetType === "all") {
+        return getAllActiveUsers();
+    }
+
+    if (targetType === "role" || targetType === "roles") {
+        return getUsersByRoles(data.targetRoles || data.roles || []);
+    }
+
+    if (targetType === "users") {
+        return getUsersByIds(data.targetUserIds || data.userIds || []);
+    }
+
+    if (targetType === "class" || targetType === "classes") {
+        return getUsersByClassIds(data.targetClassIds || data.classIds || []);
+    }
+
+    const error = new Error("targetType không hợp lệ");
+    error.status = 400;
+    throw error;
+}
+
+function getAudienceLabel(data) {
+    const targetType = (data.targetType || data.audience || "all").toString();
+
+    if (targetType === "all") return "all";
+    if (targetType === "role" || targetType === "roles") return "role";
+    if (targetType === "users") return "users";
+    if (targetType === "class" || targetType === "classes") return "class";
+
+    return "all";
+}
+
+function roleToVietnamese(role) {
+    const value = (role || "").toString();
+
+    if (value === "student") return "Sinh viên";
+    if (value === "teacher") return "Giảng viên";
+    if (value === "admin") return "Admin";
+    if (value === "qlsv") return "QLSV";
+
+    return value;
+}
+
+async function buildAudienceText(data) {
+    const audience = getAudienceLabel(data);
+
+    if (audience === "all") {
+        return "Tất cả người dùng";
+    }
+
+    if (audience === "role") {
+        const roles = uniqueArray(data.targetRoles || data.roles || []);
+        if (roles.length === 0) return "Theo vai trò";
+
+        return `Theo vai trò: ${roles.map(roleToVietnamese).join(", ")}`;
+    }
+
+    if (audience === "users") {
+        const ids = uniqueArray(data.targetUserIds || data.userIds || []);
+        if (ids.length === 0) return "Chọn người nhận";
+
+        const users = await getUsersByIds(ids);
+        const names = users.slice(0, 5).map((u) => {
+            return u.fullName || u.email || u.uid;
+        });
+
+        if (names.length === 0) {
+            return `Chọn người nhận: ${ids.length} người`;
+        }
+
+        const more = ids.length > names.length
+            ? ` và ${ids.length - names.length} người khác`
+            : "";
+
+        return `Chọn người: ${names.join(", ")}${more}`;
+    }
+
+    if (audience === "class") {
+        const classIds = uniqueArray(data.targetClassIds || data.classIds || []);
+        if (classIds.length === 0) return "Theo lớp";
+
+        const classDocs = await Promise.all(
+            classIds.slice(0, 5).map((id) => db.collection("classes").doc(id).get())
+        );
+
+        const names = classDocs
+            .filter((doc) => doc.exists)
+            .map((doc) => {
+                const cls = doc.data() || {};
+                return cls.classCode || cls.name || doc.id;
+            });
+
+        if (names.length === 0) {
+            return `Theo lớp: ${classIds.length} lớp`;
+        }
+
+        const more = classIds.length > names.length
+            ? ` và ${classIds.length - names.length} lớp khác`
+            : "";
+
+        return `Theo lớp: ${names.join(", ")}${more}`;
+    }
+
+    return "Không rõ người nhận";
+}
+
 async function createCampaign(data, actor) {
     const now = new Date();
 
+    const title = (data.title || "").toString().trim();
+    const body = (data.body || "").toString().trim();
+
+    if (!title) {
+        const error = new Error("Vui lòng nhập tiêu đề thông báo");
+        error.status = 400;
+        throw error;
+    }
+
+    if (!body) {
+        const error = new Error("Vui lòng nhập nội dung thông báo");
+        error.status = 400;
+        throw error;
+    }
+
+    const targets = await resolveTargets(data);
+
+    if (targets.length === 0) {
+        const error = new Error("Không tìm thấy người nhận thông báo");
+        error.status = 400;
+        throw error;
+    }
+
+    const audience = getAudienceLabel(data);
+
+    const targetUserIds = audience === "users"
+        ? uniqueArray(data.targetUserIds || data.userIds || [])
+        : [];
+
+    const targetRoles = audience === "role"
+        ? uniqueArray(data.targetRoles || data.roles || [])
+        : [];
+
+    const targetClassIds = audience === "class"
+        ? uniqueArray(data.targetClassIds || data.classIds || [])
+        : [];
+
     const campaignRef = db.collection("notification_campaigns").doc();
 
+    const audienceText = await buildAudienceText({
+        ...data,
+        targetType: audience,
+        targetUserIds,
+        targetRoles,
+        targetClassIds,
+    });
+
     const campaignData = {
-        title: data.title,
-        body: data.body,
-        audience: "all",
+        title,
+        body,
+        audience,
+        targetType: audience,
+        targetUserIds,
+        targetRoles,
+        targetClassIds,
+        receiverCount: targets.length,
+        audienceText,
         createdBy: actor.uid,
+        createdByRole: actor.role || "",
         createdAt: now,
         updatedAt: now,
         isDeleted: false,
@@ -25,21 +283,13 @@ async function createCampaign(data, actor) {
 
     await campaignRef.set(campaignData);
 
-    const usersSnap = await db.collection("users").get();
-
-    const targets = usersSnap.docs.filter((doc) => {
-        const user = doc.data() || {};
-        return user.isActive !== false;
-    });
-
     const allTokens = [];
 
     let batch = db.batch();
     let opCount = 0;
     let createdCount = 0;
 
-    for (const userDoc of targets) {
-        const user = userDoc.data() || {};
+    for (const user of targets) {
         const fcmTokens = Array.isArray(user.fcmTokens) ? user.fcmTokens : [];
         allTokens.push(...fcmTokens);
 
@@ -47,14 +297,15 @@ async function createCampaign(data, actor) {
 
         batch.set(notifRef, {
             campaignId: campaignRef.id,
-            receiverId: userDoc.id,
+            receiverId: user.uid,
             receiverType: "individual",
-            title: data.title,
-            body: data.body,
+            receiverRole: user.role || "",
+            title,
+            body,
             isRead: false,
             createdAt: now,
             updatedAt: now,
-            source: "admin_broadcast",
+            source: "campaign",
         });
 
         opCount += 1;
@@ -73,8 +324,8 @@ async function createCampaign(data, actor) {
 
     const pushResult = await sendPushToTokens({
         tokens: allTokens,
-        title: data.title,
-        body: data.body,
+        title,
+        body,
         data: {
             type: "SYSTEM",
             screen: "notifications",
@@ -85,6 +336,7 @@ async function createCampaign(data, actor) {
     return {
         id: campaignRef.id,
         createdCount,
+        receiverCount: targets.length,
         pushSuccessCount: pushResult.successCount,
         pushFailureCount: pushResult.failureCount,
     };
@@ -96,19 +348,36 @@ async function listCampaigns() {
         .where("isDeleted", "==", false)
         .get();
 
-    const items = snap.docs.map((doc) => {
-        const data = doc.data() || {};
-        return {
-            id: doc.id,
-            title: data.title || "",
-            body: data.body || "",
-            audience: data.audience || "all",
-            createdBy: data.createdBy || "",
-            createdAt: toISOStringSafe(data.createdAt),
-            updatedAt: toISOStringSafe(data.updatedAt),
-            isDeleted: data.isDeleted === true,
-        };
-    });
+    const items = await Promise.all(
+        snap.docs.map(async (doc) => {
+            const data = doc.data() || {};
+
+            const audience = data.audience || data.targetType || "all";
+
+            const audienceText = data.audienceText || await buildAudienceText({
+                ...data,
+                targetType: audience,
+            });
+
+            return {
+                id: doc.id,
+                title: data.title || "",
+                body: data.body || "",
+                audience,
+                targetType: audience,
+                targetUserIds: data.targetUserIds || [],
+                targetRoles: data.targetRoles || [],
+                targetClassIds: data.targetClassIds || [],
+                receiverCount: data.receiverCount || 0,
+                audienceText,
+                createdBy: data.createdBy || "",
+                createdByRole: data.createdByRole || "",
+                createdAt: toISOStringSafe(data.createdAt),
+                updatedAt: toISOStringSafe(data.updatedAt),
+                isDeleted: data.isDeleted === true,
+            };
+        })
+    );
 
     items.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
     return items;
@@ -155,6 +424,7 @@ async function updateCampaign(id, data) {
     );
 
     const allTokens = [];
+
     for (const userDoc of userDocs) {
         const user = userDoc.data() || {};
         const fcmTokens = Array.isArray(user.fcmTokens) ? user.fcmTokens : [];

@@ -11,7 +11,7 @@ async function list(req, res) {
 
     let receiverId = req.user.uid;
 
-    if (role === "admin" && requestedReceiverId) {
+    if ((role === "admin" || role === "qlsv") && requestedReceiverId) {
         receiverId = requestedReceiverId;
     }
 

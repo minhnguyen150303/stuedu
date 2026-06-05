@@ -25,10 +25,16 @@ async function replace(req, res) {
     res.json(item);
 }
 
+async function show(req, res) {
+    const item = await service.showClassLifecycle(req.params.id);
+    res.json(item);
+}
+
 module.exports = {
     list,
     create,
     update,
     hide,
     replace,
+    show,
 };

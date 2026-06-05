@@ -48,6 +48,14 @@ class AdminRepository {
     return Map<String, dynamic>.from(data as Map);
   }
 
+  Future<Map<String, dynamic>> getStudentLearningOverview(String uid) async {
+    await _attachToken();
+
+    final data = await api.get('/admin/students/$uid/learning-overview');
+
+    return Map<String, dynamic>.from(data as Map);
+  }
+
   Future<Map<String, dynamic>> getUserDetail(String uid) async {
     await _attachToken();
     final data = await api.get('/admin/users/$uid');
@@ -150,12 +158,23 @@ class AdminRepository {
   Future<Map<String, dynamic>> createNotificationCampaign({
     required String title,
     required String body,
+    String targetType = 'all',
+    List<String> targetRoles = const [],
+    List<String> targetUserIds = const [],
+    List<String> targetClassIds = const [],
   }) async {
     await _attachToken();
 
     final data = await api.post(
       '/notification-campaigns',
-      data: {'title': title, 'body': body},
+      data: {
+        'title': title,
+        'body': body,
+        'targetType': targetType,
+        'targetRoles': targetRoles,
+        'targetUserIds': targetUserIds,
+        'targetClassIds': targetClassIds,
+      },
     );
 
     return Map<String, dynamic>.from(data as Map);

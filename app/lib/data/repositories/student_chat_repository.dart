@@ -10,7 +10,7 @@ class StudentChatRepository {
         .collection('class_chats')
         .doc(classId)
         .collection('messages')
-        .orderBy('createdAt', descending: false)
+        .orderBy('createdAt', descending: true)
         .snapshots()
         .map((snapshot) {
           return snapshot.docs.map((doc) {
@@ -32,19 +32,19 @@ class StudentChatRepository {
     required String classId,
     required String text,
     required Map<String, dynamic> profile,
+    List<Map<String, dynamic>> attachments = const [],
   }) async {
     final trimmed = text.trim();
-    if (trimmed.isEmpty) return;
+
+    if (trimmed.isEmpty && attachments.isEmpty) return;
 
     final currentUser = _auth.currentUser;
     if (currentUser == null) {
       throw Exception('Chưa đăng nhập');
     }
 
-    final chatDoc = await _firestore
-        .collection('class_chats')
-        .doc(classId)
-        .get();
+    final chatRef = _firestore.collection('class_chats').doc(classId);
+    final chatDoc = await chatRef.get();
 
     if (chatDoc.exists) {
       final data = chatDoc.data() ?? {};
@@ -57,7 +57,15 @@ class StudentChatRepository {
     final senderName = (profile['fullName'] ?? 'Người dùng').toString();
     final senderAvatarUrl = (profile['avatarUrl'] ?? '').toString();
 
-    final chatRef = _firestore.collection('class_chats').doc(classId);
+    final messageType = attachments.isEmpty
+        ? 'text'
+        : trimmed.isEmpty
+        ? 'file'
+        : 'mixed';
+
+    final lastMessage = attachments.isNotEmpty
+        ? (trimmed.isEmpty ? 'Đã gửi tệp đính kèm' : trimmed)
+        : trimmed;
 
     await chatRef.collection('messages').add({
       'classId': classId,
@@ -66,6 +74,9 @@ class StudentChatRepository {
       'senderRole': senderRole,
       'senderAvatarUrl': senderAvatarUrl,
       'text': trimmed,
+      'messageType': messageType,
+      'attachments': attachments,
+      'likedBy': <String>[],
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': null,
       'deleted': false,
@@ -76,9 +87,30 @@ class StudentChatRepository {
     await chatRef.set({
       'classId': classId,
       'updatedAt': FieldValue.serverTimestamp(),
-      'lastMessage': trimmed,
+      'lastMessage': lastMessage,
       'lastMessageAt': FieldValue.serverTimestamp(),
       'lastSenderId': currentUser.uid,
+      'lastSenderRole': senderRole,
+    }, SetOptions(merge: true));
+  }
+
+  Future<void> toggleLikeMessage({
+    required String classId,
+    required String messageId,
+    required String uid,
+    required bool liked,
+  }) async {
+    final ref = _firestore
+        .collection('class_chats')
+        .doc(classId)
+        .collection('messages')
+        .doc(messageId);
+
+    await ref.set({
+      'likedBy': liked
+          ? FieldValue.arrayRemove([uid])
+          : FieldValue.arrayUnion([uid]),
+      'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
   }
 

@@ -575,6 +575,246 @@ class _AdminUserDetailScreenState extends State<AdminUserDetailScreen> {
     }
   }
 
+  String _scoreText(dynamic value) {
+    final n = num.tryParse((value ?? '').toString());
+    if (n == null) return '--';
+
+    final text = n.toStringAsFixed(2);
+    return text.replaceAll(RegExp(r'\.?0+$'), '');
+  }
+
+  Color _learningStatusColor(String status) {
+    final s = status.toLowerCase();
+
+    if (s.contains('pass') || s.contains('đạt')) {
+      return const Color(0xFF16A34A);
+    }
+
+    if (s.contains('fail') || s.contains('trượt') || s.contains('nợ')) {
+      return const Color(0xFFDC2626);
+    }
+
+    return const Color(0xFFF59E0B);
+  }
+
+  Widget _buildLearningOverview(AdminUserDetail user) {
+    return FutureBuilder<Map<String, dynamic>>(
+      future: _repo.getStudentLearningOverview(user.uid),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return _SectionCard(
+            title: 'TÌNH HÌNH HỌC TẬP',
+            child: const Padding(
+              padding: EdgeInsets.symmetric(vertical: 26),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+          );
+        }
+
+        if (snapshot.hasError) {
+          return _SectionCard(
+            title: 'TÌNH HÌNH HỌC TẬP',
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF1F2),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFFECDD3)),
+              ),
+              child: Text(
+                'Không tải được tình hình học tập\n${snapshot.error}',
+                style: const TextStyle(
+                  color: Color(0xFFDC2626),
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          );
+        }
+
+        final data = snapshot.data ?? {};
+        final summary = Map<String, dynamic>.from(
+          (data['summary'] as Map?) ?? const {},
+        );
+
+        final items = ((data['items'] as List?) ?? const [])
+            .map((e) => Map<String, dynamic>.from(e as Map))
+            .toList();
+
+        return _SectionCard(
+          title: 'TÌNH HÌNH HỌC TẬP',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: _LearningStatBox(
+                      label: 'Tổng môn',
+                      value: '${summary['totalSubjects'] ?? 0}',
+                      color: const Color(0xFF1B2A8A),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _LearningStatBox(
+                      label: 'Đã đạt',
+                      value: '${summary['passedSubjects'] ?? 0}',
+                      color: const Color(0xFF16A34A),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: _LearningStatBox(
+                      label: 'Không đạt',
+                      value: '${summary['failedSubjects'] ?? 0}',
+                      color: const Color(0xFFDC2626),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _LearningStatBox(
+                      label: 'GPA hệ 4',
+                      value: _scoreText(summary['avgGpa4']),
+                      color: const Color(0xFFF59E0B),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+
+              if (items.isEmpty)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                  ),
+                  child: const Text(
+                    'Sinh viên chưa có dữ liệu điểm.',
+                    style: TextStyle(
+                      color: Color(0xFF64748B),
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                )
+              else
+                ...items.map((item) {
+                  final status = (item['status'] ?? 'Chưa đủ điểm').toString();
+                  final color = _learningStatusColor(status);
+
+                  final courseName = (item['courseName'] ?? 'Môn học')
+                      .toString();
+                  final classCode = (item['classCode'] ?? '').toString();
+                  final courseCode = (item['courseCode'] ?? '').toString();
+                  final credits = item['credits'] ?? 0;
+
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                courseName,
+                                style: const TextStyle(
+                                  fontSize: 15.5,
+                                  fontWeight: FontWeight.w900,
+                                  color: Color(0xFF0F172A),
+                                ),
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 5,
+                              ),
+                              decoration: BoxDecoration(
+                                color: color.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              child: Text(
+                                status,
+                                style: TextStyle(
+                                  color: color,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          [
+                            if (courseCode.isNotEmpty) courseCode,
+                            if (classCode.isNotEmpty) 'Lớp $classCode',
+                            '$credits tín chỉ',
+                          ].join(' • '),
+                          style: const TextStyle(
+                            color: Color(0xFF64748B),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _ScoreMiniBox(
+                                label: 'CC',
+                                value: _scoreText(item['scoreProcess']),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _ScoreMiniBox(
+                                label: 'GK',
+                                value: _scoreText(item['scoreMid']),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _ScoreMiniBox(
+                                label: 'CK',
+                                value: _scoreText(item['scoreFinal']),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _ScoreMiniBox(
+                                label: 'TK',
+                                value: _scoreText(item['totalTen']),
+                                strong: true,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  );
+                }),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -729,12 +969,6 @@ class _AdminUserDetailScreenState extends State<AdminUserDetailScreen> {
                   child: Column(
                     children: [
                       _InfoRow(
-                        icon: Icons.fingerprint_rounded,
-                        label: 'User ID',
-                        value: user.uid,
-                      ),
-                      const _InfoDivider(),
-                      _InfoRow(
                         icon: Icons.calendar_today_rounded,
                         label: 'Joined Date',
                         value: user.joinedDate ?? 'Chưa có dữ liệu',
@@ -792,6 +1026,12 @@ class _AdminUserDetailScreenState extends State<AdminUserDetailScreen> {
                     ),
                   ),
                 ],
+
+                if (user.isStudent) ...[
+                  const SizedBox(height: 12),
+                  _buildLearningOverview(user),
+                ],
+
                 const SizedBox(height: 12),
                 _SectionCard(
                   title: 'MANAGEMENT ACTIONS',
@@ -1339,6 +1579,99 @@ class _ActionConfirmDialog extends StatelessWidget {
   }
 }
 
+class _LearningStatBox extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color color;
+
+  const _LearningStatBox({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: color.withOpacity(0.18)),
+      ),
+      child: Column(
+        children: [
+          Text(
+            value,
+            style: TextStyle(
+              color: color,
+              fontSize: 22,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Color(0xFF64748B),
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ScoreMiniBox extends StatelessWidget {
+  final String label;
+  final String value;
+  final bool strong;
+
+  const _ScoreMiniBox({
+    required this.label,
+    required this.value,
+    this.strong = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = strong ? const Color(0xFF1B2A8A) : const Color(0xFF475569);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              color: Color(0xFF94A3B8),
+              fontSize: 11,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: TextStyle(
+              color: color,
+              fontSize: 14,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class AdminUserDetail {
   final String uid;
   final String fullName;
@@ -1406,6 +1739,11 @@ class AdminUserDetail {
       return '${parts.first[0]}${parts.last[0]}';
     }
     return parts.first[0].toUpperCase();
+  }
+
+  bool get isStudent {
+    final role = roleLabel.toLowerCase().trim();
+    return role == 'student' || role == 'sinh viên' || role.contains('student');
   }
 }
 

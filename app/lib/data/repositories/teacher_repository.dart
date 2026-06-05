@@ -246,6 +246,21 @@ class TeacherRepository {
     await _api.delete('/assignments/$id');
   }
 
+  Future<Map<String, dynamic>> gradeAssignmentSubmission({
+    required String assignmentId,
+    required String studentId,
+    required double assignmentScore,
+  }) async {
+    await _attachToken();
+
+    final data = await _api.patch(
+      '/assignments/$assignmentId/submissions/$studentId/grade',
+      data: {'assignmentScore': assignmentScore},
+    );
+
+    return Map<String, dynamic>.from(data as Map);
+  }
+
   Future<void> upsertGrade({
     required String classId,
     required String studentId,
@@ -377,6 +392,49 @@ class TeacherRepository {
       '/grades/import',
       data: {'classId': classId, 'rows': rows},
     );
+
+    return Map<String, dynamic>.from(data as Map);
+  }
+
+  Future<List<Map<String, dynamic>>> getAvailableStudentsForClass({
+    required String classId,
+    String? q,
+  }) async {
+    await _attachToken();
+
+    final data = await _api.get(
+      '/classes/$classId/available-students',
+      queryParameters: {if (q != null && q.trim().isNotEmpty) 'q': q.trim()},
+    );
+
+    if (data is List) {
+      return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    }
+
+    return [];
+  }
+
+  Future<Map<String, dynamic>> addStudentToClass({
+    required String classId,
+    required String studentId,
+  }) async {
+    await _attachToken();
+
+    final data = await _api.post(
+      '/classes/$classId/students',
+      data: {'studentId': studentId},
+    );
+
+    return Map<String, dynamic>.from(data as Map);
+  }
+
+  Future<Map<String, dynamic>> removeStudentFromClass({
+    required String classId,
+    required String studentId,
+  }) async {
+    await _attachToken();
+
+    final data = await _api.delete('/classes/$classId/students/$studentId');
 
     return Map<String, dynamic>.from(data as Map);
   }

@@ -654,4 +654,12 @@ class AdminAcademicRepository {
       (data as List).map((e) => Map<String, dynamic>.from(e)),
     );
   }
+
+  Future<Map<String, dynamic>> showClassLifecycle(String id) async {
+    await _attachToken();
+
+    final data = await api.patch('/class-lifecycles/$id/show', data: {});
+
+    return Map<String, dynamic>.from(data as Map);
+  }
 }

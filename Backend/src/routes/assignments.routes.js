@@ -28,6 +28,13 @@ router.post(
     asyncHandler(controller.submit)
 );
 
+router.patch(
+    "/:id/submissions/:studentId/grade",
+    requireAuth,
+    requireRole(["teacher"]),
+    asyncHandler(controller.gradeSubmission)
+);
+
 router.put(
     "/:id",
     requireAuth,

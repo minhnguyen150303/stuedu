@@ -22,6 +22,11 @@ async function getUserDetail(req, res) {
     res.json(data);
 }
 
+async function getStudentLearningOverview(req, res) {
+    const data = await userService.getStudentLearningOverviewForAdmin(req.params.uid);
+    res.json(data);
+}
+
 async function updateUser(req, res) {
     const data = await userService.updateUserProfileByAdmin(req.params.uid, req.body);
     res.json({ message: "User updated", ...data });
@@ -76,6 +81,7 @@ module.exports = {
     userStats,
     listUsers,
     getUserDetail,
+    getStudentLearningOverview,
     updateUser,
     lockUser,
     deleteUser,

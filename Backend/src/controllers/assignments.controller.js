@@ -33,10 +33,25 @@ async function submit(req, res) {
     });
 }
 
+async function gradeSubmission(req, res) {
+    const result = await service.gradeAssignmentSubmission({
+        assignmentId: req.params.id,
+        studentId: req.params.studentId,
+        teacherId: req.user.uid,
+        assignmentScore: req.body.assignmentScore,
+    });
+
+    res.json({
+        message: "Graded",
+        submission: result,
+    });
+}
+
 module.exports = {
     create,
     list,
     update,
     remove,
     submit,
+    gradeSubmission,
 };

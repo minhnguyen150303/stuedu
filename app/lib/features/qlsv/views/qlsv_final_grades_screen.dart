@@ -1,4 +1,8 @@
+import 'dart:typed_data';
+
+import 'package:excel/excel.dart' as ex;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../../core/config/app_config.dart';
 import '../../../data/repositories/qlsv_repository.dart';
@@ -16,6 +20,10 @@ class QlsvFinalGradesScreen extends StatefulWidget {
 
 class _QlsvFinalGradesScreenState extends State<QlsvFinalGradesScreen> {
   late final QlsvRepository _repo;
+
+  static const MethodChannel _downloadsChannel = MethodChannel(
+    'stu_edu/downloads',
+  );
 
   bool _loading = true;
   String? _error;
@@ -159,6 +167,325 @@ class _QlsvFinalGradesScreenState extends State<QlsvFinalGradesScreen> {
     }
   }
 
+  String _sanitizeFileName(String input) {
+    final text = input
+        .trim()
+        .replaceAll(RegExp(r'[\\/:*?"<>|]'), '_')
+        .replaceAll(RegExp(r'\s+'), '_');
+
+    return text.isEmpty ? 'khong_ro' : text;
+  }
+
+  String _scoreText(dynamic value) {
+    if (value == null) return '';
+
+    final n = num.tryParse(value.toString());
+    if (n == null) return value.toString();
+
+    return n.toStringAsFixed(2).replaceAll(RegExp(r'\.?0+$'), '');
+  }
+
+  String _studentCodeOf(Map<String, dynamic> user) {
+    final studentInfo = user['studentInfo'];
+
+    if (studentInfo is Map) {
+      return (studentInfo['studentCode'] ?? '').toString();
+    }
+
+    return '';
+  }
+
+  Future<void> _saveExcelToDownloads({
+    required Uint8List bytes,
+    required String fileName,
+  }) async {
+    await _downloadsChannel.invokeMethod<String>('saveToDownloads', {
+      'fileName': fileName,
+      'folderName': 'qlsv',
+      'mimeType':
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'bytes': bytes,
+    });
+  }
+
+  Future<void> _exportFinalGradesExcel() async {
+    final cls = _selectedClass;
+
+    if (cls == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Vui lòng chọn lớp trước')));
+      return;
+    }
+
+    if (_students.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Lớp chưa có sinh viên để xuất file')),
+      );
+      return;
+    }
+
+    try {
+      final classCode = (cls['classCode'] ?? 'lop').toString();
+      final courseName = (cls['courseName'] ?? 'mon_hoc').toString();
+
+      final safeCourseName = _sanitizeFileName(courseName);
+      final safeClassCode = _sanitizeFileName(classCode);
+
+      final fileName = 'tk_d_${safeCourseName}_$safeClassCode.xlsx';
+
+      final excel = ex.Excel.createExcel();
+      const sheetName = 'Tong ket diem';
+
+      excel.rename('Sheet1', sheetName);
+      final sheet = excel[sheetName];
+
+      sheet.appendRow([
+        ex.TextCellValue('STT'),
+        ex.TextCellValue('Mã sinh viên'),
+        ex.TextCellValue('Họ tên'),
+        ex.TextCellValue('Điểm chuyên cần'),
+        ex.TextCellValue('Điểm giữa kỳ'),
+        ex.TextCellValue('Điểm cuối kỳ'),
+        ex.TextCellValue('Tổng kết'),
+        ex.TextCellValue('Trạng thái'),
+      ]);
+
+      for (int i = 0; i < _students.length; i++) {
+        final item = _students[i];
+
+        final user = Map<String, dynamic>.from(
+          (item['user'] as Map?) ?? const {},
+        );
+
+        final studentId = (item['studentId'] ?? user['uid'] ?? '').toString();
+        final fullName = (user['fullName'] ?? 'Sinh viên').toString();
+        final studentCode = _studentCodeOf(user);
+
+        final grade = _findGrade(studentId);
+
+        sheet.appendRow([
+          ex.IntCellValue(i + 1),
+          ex.TextCellValue(studentCode),
+          ex.TextCellValue(fullName),
+          ex.TextCellValue(_scoreText(grade?['scoreProcess'])),
+          ex.TextCellValue(_scoreText(grade?['scoreMid'])),
+          ex.TextCellValue(_scoreText(grade?['scoreFinal'])),
+          ex.TextCellValue(_scoreText(grade?['totalTen'])),
+          ex.TextCellValue((grade?['status'] ?? 'Chưa đủ điểm').toString()),
+        ]);
+      }
+
+      final encoded = excel.encode();
+
+      if (encoded == null || encoded.isEmpty) {
+        throw Exception('Không tạo được file Excel');
+      }
+
+      await _saveExcelToDownloads(
+        bytes: Uint8List.fromList(encoded),
+        fileName: fileName,
+      );
+
+      if (!mounted) return;
+
+      _showExportSuccessDialog(fileName: fileName);
+    } catch (e) {
+      if (!mounted) return;
+
+      _showExportErrorDialog(e.toString());
+    }
+  }
+
+  void _showExportSuccessDialog({required String fileName}) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) {
+        return Dialog(
+          insetPadding: const EdgeInsets.symmetric(horizontal: 24),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(26),
+          ),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(22, 24, 22, 18),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(26),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 74,
+                  height: 74,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFEFFDF5),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.check_circle_rounded,
+                    color: Color(0xFF16A34A),
+                    size: 46,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                const Text(
+                  'Xuất file thành công',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                    color: Color(0xFF0F172A),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'File điểm đã được lưu vào thư mục:',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Color(0xFF64748B),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                  ),
+                  child: Column(
+                    children: [
+                      const Text(
+                        'Downloads/qlsv',
+                        style: TextStyle(
+                          color: Color(0xFF1B2A8A),
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        fileName,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Color(0xFF475569),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 18),
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: FilledButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF1B2A8A),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                    child: const Text(
+                      'Đã hiểu',
+                      style: TextStyle(fontWeight: FontWeight.w900),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showExportErrorDialog(String message) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) {
+        return Dialog(
+          insetPadding: const EdgeInsets.symmetric(horizontal: 24),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(26),
+          ),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(22, 24, 22, 18),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(26),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 74,
+                  height: 74,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFFFF1F2),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.error_rounded,
+                    color: Color(0xFFDC2626),
+                    size: 46,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                const Text(
+                  'Xuất file thất bại',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                    color: Color(0xFF0F172A),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  message,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: Color(0xFF64748B),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: FilledButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFFDC2626),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                    child: const Text(
+                      'Đóng',
+                      style: TextStyle(fontWeight: FontWeight.w900),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final selectedClass = _selectedClass;
@@ -273,45 +600,69 @@ class _QlsvFinalGradesScreenState extends State<QlsvFinalGradesScreen> {
             color: Colors.white,
             borderRadius: BorderRadius.circular(18),
           ),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              IconButton(
-                onPressed: () {
-                  setState(() {
-                    _selectedClass = null;
-                    _students = [];
-                    _grades = [];
-                  });
-                },
-                icon: const Icon(Icons.arrow_back_rounded),
-              ),
-              Expanded(
-                child: Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w900,
+              Row(
+                children: [
+                  IconButton(
+                    onPressed: () {
+                      setState(() {
+                        _selectedClass = null;
+                        _students = [];
+                        _grades = [];
+                      });
+                    },
+                    icon: const Icon(Icons.arrow_back_rounded),
                   ),
-                ),
-              ),
-              FilledButton.icon(
-                onPressed: () async {
-                  final changed = await Navigator.push<bool>(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => QlsvImportFinalGradesScreen(
-                        classId: cls['id'].toString(),
-                        className: title,
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
                       ),
                     ),
-                  );
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: _exportFinalGradesExcel,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFF16A34A),
+                        foregroundColor: Colors.white,
+                      ),
+                      icon: const Icon(Icons.file_download_rounded),
+                      label: const Text('Xuất Excel'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: () async {
+                        final changed = await Navigator.push<bool>(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => QlsvImportFinalGradesScreen(
+                              classId: cls['id'].toString(),
+                              className: title,
+                            ),
+                          ),
+                        );
 
-                  if (changed == true) {
-                    await _selectClass(cls);
-                  }
-                },
-                icon: const Icon(Icons.upload_file_rounded),
-                label: const Text('Import'),
+                        if (changed == true) {
+                          await _selectClass(cls);
+                        }
+                      },
+                      icon: const Icon(Icons.upload_file_rounded),
+                      label: const Text('Import'),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),

@@ -39,6 +39,13 @@ router.patch(
     asyncHandler(controller.hide)
 );
 
+router.patch(
+    "/:id/show",
+    requireAuth,
+    requireRole(["admin"]),
+    asyncHandler(controller.show)
+);
+
 router.post(
     "/:id/replace",
     requireAuth,
