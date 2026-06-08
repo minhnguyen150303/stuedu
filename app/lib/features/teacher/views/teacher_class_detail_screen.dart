@@ -384,11 +384,17 @@ class _TeacherClassDetailScreenState extends State<TeacherClassDetailScreen>
 
   Future<void> _downloadAttachment(Map<String, dynamic> attachment) async {
     try {
-      final primaryUrl = (attachment['url'] ?? attachment['fileUrl'] ?? '')
+      final primaryUrl =
+          (attachment['downloadUrl'] ??
+                  attachment['url'] ??
+                  attachment['fileUrl'] ??
+                  '')
+              .toString()
+              .trim();
+
+      final fallbackUrl = (attachment['url'] ?? attachment['fileUrl'] ?? '')
           .toString()
           .trim();
-
-      final fallbackUrl = (attachment['downloadUrl'] ?? '').toString().trim();
 
       if (primaryUrl.isEmpty && fallbackUrl.isEmpty) {
         throw Exception('Không tìm thấy URL file');
@@ -2336,11 +2342,12 @@ class _TeacherClassDetailScreenState extends State<TeacherClassDetailScreen>
 
                     final materialFile = <String, dynamic>{
                       'url': url,
-                      'downloadUrl': item['downloadUrl'],
+                      'downloadUrl': item['downloadUrl'] ?? url,
+                      'publicId': item['publicId'],
                       'originalName':
                           item['originalName'] ?? item['title'] ?? 'Tai_lieu',
                       'resourceType':
-                          item['resourceType'] ?? item['type'] ?? '',
+                          item['resourceType'] ?? item['type'] ?? 'raw',
                       'format': item['format'] ?? '',
                     };
 
@@ -2735,9 +2742,13 @@ class _TeacherClassDetailScreenState extends State<TeacherClassDetailScreen>
                                               .uploadFileDetailed(
                                                 selectedFile!,
                                               );
-
                                           final url = (uploaded['url'] ?? '')
                                               .toString();
+                                          final downloadUrl =
+                                              (uploaded['downloadUrl'] ??
+                                                      uploaded['url'] ??
+                                                      '')
+                                                  .toString();
                                           final publicId =
                                               (uploaded['publicId'] ?? '')
                                                   .toString();
@@ -2763,6 +2774,7 @@ class _TeacherClassDetailScreenState extends State<TeacherClassDetailScreen>
                                             title: titleController.text.trim(),
                                             type: type,
                                             url: url,
+                                            downloadUrl: downloadUrl,
                                             publicId: publicId,
                                             resourceType: resourceType,
                                             originalName: originalName,
@@ -3910,6 +3922,8 @@ class _TeacherClassDetailScreenState extends State<TeacherClassDetailScreen>
                             }
 
                             String finalUrl = (item['url'] ?? '').toString();
+                            String? downloadUrl = item['downloadUrl']
+                                ?.toString();
                             String? publicId = item['publicId']?.toString();
                             String resourceType =
                                 (item['resourceType'] ?? 'raw').toString();
@@ -3927,6 +3941,11 @@ class _TeacherClassDetailScreenState extends State<TeacherClassDetailScreen>
                               );
 
                               finalUrl = (uploaded['url'] ?? '').toString();
+                              downloadUrl =
+                                  (uploaded['downloadUrl'] ??
+                                          uploaded['url'] ??
+                                          '')
+                                      .toString();
                               publicId = (uploaded['publicId'] ?? '')
                                   .toString();
                               resourceType = (uploaded['resourceType'] ?? 'raw')
@@ -3954,6 +3973,7 @@ class _TeacherClassDetailScreenState extends State<TeacherClassDetailScreen>
                               title: titleController.text.trim(),
                               type: detectedType,
                               url: finalUrl,
+                              downloadUrl: downloadUrl,
                               publicId: publicId,
                               resourceType: resourceType,
                               originalName: originalName,

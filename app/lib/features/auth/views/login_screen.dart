@@ -154,6 +154,131 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  Future<void> _forgotPassword() async {
+    final email = _emailCtrl.text.trim();
+
+    if (email.isEmpty) {
+      _show('Vui lòng nhập email trước khi đặt lại mật khẩu.');
+      return;
+    }
+
+    if (!email.contains('@')) {
+      _show('Email không hợp lệ.');
+      return;
+    }
+
+    setState(() => _loading = true);
+
+    try {
+      final api = ApiClient(AppConfig.baseUrl);
+
+      await api.post('/users/forgot-password', data: {'email': email});
+
+      if (!mounted) return;
+
+      _showResetPasswordDialog(
+        'Đã gửi email đặt lại mật khẩu. Vui lòng kiểm tra hộp thư của bạn.',
+        success: true,
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      _showResetPasswordDialog(
+        'Gửi email đặt lại mật khẩu thất bại. Vui lòng thử lại sau.',
+        success: false,
+      );
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  void _showResetPasswordDialog(String message, {bool success = true}) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return Dialog(
+          insetPadding: const EdgeInsets.symmetric(horizontal: 28),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(26),
+          ),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(22, 24, 22, 18),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(26),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 72,
+                  height: 72,
+                  decoration: BoxDecoration(
+                    color: success
+                        ? const Color(0xFFEFFDF5)
+                        : const Color(0xFFFFF1F2),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    success
+                        ? Icons.mark_email_read_rounded
+                        : Icons.error_rounded,
+                    color: success
+                        ? const Color(0xFF16A34A)
+                        : const Color(0xFFDC2626),
+                    size: 42,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Text(
+                  success ? 'Đã gửi email' : 'Có lỗi xảy ra',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 21,
+                    fontWeight: FontWeight.w900,
+                    color: Color(0xFF0F172A),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  message,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 14.5,
+                    height: 1.4,
+                    color: Color(0xFF64748B),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: FilledButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: success
+                          ? _primary
+                          : const Color(0xFFDC2626),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                    child: const Text(
+                      'Đã hiểu',
+                      style: TextStyle(fontWeight: FontWeight.w900),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   InputDecoration _inputDecoration({
     required String hintText,
     required IconData icon,
@@ -426,11 +551,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                         child: TextButton(
                                           onPressed: _loading
                                               ? null
-                                              : () {
-                                                  _show(
-                                                    "Chưa làm chức năng quên mật khẩu (có thể dùng Firebase reset email).",
-                                                  );
-                                                },
+                                              : _forgotPassword,
                                           style: TextButton.styleFrom(
                                             foregroundColor: _primary,
                                             padding: EdgeInsets.zero,

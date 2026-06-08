@@ -1287,6 +1287,32 @@ async function getMyNotifications(studentId) {
 //     };
 // }
 
+function isCurrentLearningClass(cls = {}) {
+    const adminState = (cls.adminState || "").toString();
+    const status = (cls.status || "").toString();
+    const semesterStatus = (
+        cls.semesterStatus ||
+        cls.cycleStatus ||
+        cls.semesterCycleStatus ||
+        ""
+    ).toString();
+
+    if (cls.isArchived === true) return false;
+    if (cls.archived === true) return false;
+
+    if (adminState === "archived") return false;
+    if (adminState === "history") return false;
+    if (adminState === "finished") return false;
+
+    if (status === "archived") return false;
+    if (status === "history") return false;
+    if (status === "finished") return false;
+
+    if (semesterStatus === "finished") return false;
+    if (semesterStatus === "locked") return false;
+
+    return true;
+}
 
 async function getStudentHome(studentId) {
     const student = await getStudentProfile(studentId);
@@ -1295,6 +1321,7 @@ async function getStudentHome(studentId) {
     const classIds = enrollments.map((e) => e.classId).filter(Boolean);
     const classMap = await getClassMapByIds(classIds);
     const classes = Object.values(classMap);
+    const currentClasses = classes.filter(isCurrentLearningClass);
 
     const courseIds = classes.map((c) => c.courseId).filter(Boolean);
     const courseMap = await getCourseMapByIds(courseIds);
@@ -1350,7 +1377,8 @@ async function getStudentHome(studentId) {
             notStartedCredits: creditSummary.notStartedCredits ?? 0,
 
             totalMajorCredits: creditSummary.requiredCredits ?? 0,
-            approvedClassCount: classes.length,
+            approvedClassCount: currentClasses.length,
+            historyClassCount: classes.length - currentClasses.length,
         },
         todaySchedule,
         upcomingDeadlines,

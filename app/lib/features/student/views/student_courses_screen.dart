@@ -92,9 +92,9 @@ class _StudentCoursesScreenState extends State<StudentCoursesScreen> {
 
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Đăng ký thành công, đang chờ duyệt')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Đăng ký thành công!')));
 
       await _loadData();
     } catch (e) {

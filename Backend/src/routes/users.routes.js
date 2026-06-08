@@ -5,6 +5,11 @@ const { requireAuth } = require("../middlewares/auth.middleware");
 const { validateSettingsPatch, validateFcmToken } = require("../models/validators");
 const controller = require("../controllers/users.controller");
 
+router.post(
+    "/forgot-password",
+    asyncHandler(controller.forgotPassword)
+);
+
 router.get(
     "/me",
     requireAuth,

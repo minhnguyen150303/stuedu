@@ -91,7 +91,7 @@ List<Map<String, dynamic>> _extractAttachments(dynamic raw) {
         };
       })
       .where((e) {
-        final url = (e['url'] ?? '').toString().trim();
+        final url = (e['url'] ?? e['downloadUrl'] ?? '').toString().trim();
         return url.isNotEmpty;
       })
       .toList();
@@ -101,7 +101,10 @@ String _attachmentDisplayName(Map<String, dynamic> attachment) {
   final originalName = (attachment['originalName'] ?? '').toString().trim();
   if (originalName.isNotEmpty) return originalName;
 
-  final url = (attachment['url'] ?? '').toString().trim();
+  final url = (attachment['url'] ?? attachment['downloadUrl'] ?? '')
+      .toString()
+      .trim();
+
   final uri = Uri.tryParse(url);
   if (uri != null && uri.pathSegments.isNotEmpty) {
     return uri.pathSegments.last;
@@ -111,7 +114,10 @@ String _attachmentDisplayName(Map<String, dynamic> attachment) {
 }
 
 bool _isImageAttachment(Map<String, dynamic> attachment) {
-  final url = (attachment['url'] ?? '').toString().trim().toLowerCase();
+  final url = (attachment['url'] ?? attachment['downloadUrl'] ?? '')
+      .toString()
+      .trim()
+      .toLowerCase();
   final name = _attachmentDisplayName(attachment).toLowerCase();
   final resourceType = (attachment['resourceType'] ?? '')
       .toString()
@@ -134,7 +140,10 @@ bool _isImageAttachment(Map<String, dynamic> attachment) {
 }
 
 bool _isPdfAttachment(Map<String, dynamic> attachment) {
-  final url = (attachment['url'] ?? '').toString().trim().toLowerCase();
+  final url = (attachment['url'] ?? attachment['downloadUrl'] ?? '')
+      .toString()
+      .trim()
+      .toLowerCase();
   final name = _attachmentDisplayName(attachment).toLowerCase();
   final format = (attachment['format'] ?? '').toString().trim().toLowerCase();
 
@@ -199,7 +208,9 @@ Widget _buildAssignmentAttachmentPreviewList(
         spacing: 10,
         runSpacing: 10,
         children: attachments.map((attachment) {
-          final url = (attachment['url'] ?? '').toString().trim();
+          final url = (attachment['url'] ?? attachment['downloadUrl'] ?? '')
+              .toString()
+              .trim();
           final fileName = _attachmentDisplayName(attachment);
           final isImage = _isImageAttachment(attachment);
           final isPdf = _isPdfAttachment(attachment);
@@ -502,7 +513,12 @@ class _StudentClassDetailScreenState extends State<StudentClassDetailScreen>
 
     final result = await _downloadsChannel.invokeMethod<String>(
       'saveToDownloads',
-      {'fileName': fileName, 'mimeType': mimeType, 'bytes': bytes},
+      {
+        'fileName': fileName,
+        'folderName': 'StuEdu',
+        'mimeType': mimeType,
+        'bytes': bytes,
+      },
     );
 
     return result;
@@ -510,8 +526,17 @@ class _StudentClassDetailScreenState extends State<StudentClassDetailScreen>
 
   Future<void> _downloadAttachment(Map<String, dynamic> attachment) async {
     try {
-      final primaryUrl = (attachment['url'] ?? '').toString().trim();
-      final fallbackUrl = (attachment['downloadUrl'] ?? '').toString().trim();
+      final primaryUrl =
+          (attachment['downloadUrl'] ??
+                  attachment['url'] ??
+                  attachment['fileUrl'] ??
+                  '')
+              .toString()
+              .trim();
+
+      final fallbackUrl = (attachment['url'] ?? attachment['fileUrl'] ?? '')
+          .toString()
+          .trim();
 
       if (primaryUrl.isEmpty && fallbackUrl.isEmpty) {
         throw Exception('Không tìm thấy URL file');
@@ -1193,15 +1218,19 @@ class _MaterialsTab extends StatelessWidget {
 
   List<Map<String, dynamic>> _materialToAttachments(Map<String, dynamic> item) {
     final url = (item['url'] ?? '').toString().trim();
-    if (url.isEmpty) return const [];
+    final downloadUrl = (item['downloadUrl'] ?? url).toString().trim();
+
+    if (url.isEmpty && downloadUrl.isEmpty) return const [];
 
     return [
       {
-        'url': url,
-        'downloadUrl': item['downloadUrl'],
+        'url': url.isNotEmpty ? url : downloadUrl,
+        'downloadUrl': downloadUrl.isNotEmpty ? downloadUrl : url,
+        'publicId': item['publicId'],
         'originalName': (item['originalName'] ?? item['title'] ?? 'Tai_lieu')
             .toString(),
-        'resourceType': (item['resourceType'] ?? item['type'] ?? '').toString(),
+        'resourceType': (item['resourceType'] ?? item['type'] ?? 'raw')
+            .toString(),
         'format': (item['format'] ?? '').toString(),
       },
     ];
@@ -1691,7 +1720,8 @@ class _ClassChatTabState extends State<_ClassChatTab> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: attachments.map((attachment) {
-        final url = (attachment['url'] ?? '').toString();
+        final url = (attachment['url'] ?? attachment['downloadUrl'] ?? '')
+            .toString();
         final name = _attachmentDisplayName(attachment);
         final isImage = _isImageAttachment(attachment);
         final isPdf = _isPdfAttachment(attachment);

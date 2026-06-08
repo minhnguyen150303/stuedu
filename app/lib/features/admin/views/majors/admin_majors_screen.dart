@@ -39,137 +39,231 @@ class _AdminMajorsScreenState extends State<AdminMajorsScreen> {
       text: (major?['description'] ?? '').toString(),
     );
 
-    final ok = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (sheetContext) {
-        return Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
-          ),
-          child: Container(
-            decoration: const BoxDecoration(
-              color: Color(0xFFF9FAFC),
-              borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-            ),
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 54,
-                  height: 6,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFD7DCE7),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
+    try {
+      final result = await showModalBottomSheet<Map<String, String>>(
+        context: context,
+        useRootNavigator: true,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (sheetContext) {
+          final bottomInset = MediaQuery.of(sheetContext).viewInsets.bottom;
+
+          return AnimatedPadding(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOut,
+            padding: EdgeInsets.only(bottom: bottomInset),
+            child: SafeArea(
+              top: false,
+              child: Container(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(sheetContext).size.height * 0.78,
                 ),
-                const SizedBox(height: 18),
-                Text(
-                  major == null ? 'Thêm chuyên ngành' : 'Sửa chuyên ngành',
-                  style: const TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w900,
-                    color: Color(0xFF0F172A),
-                  ),
+                decoration: const BoxDecoration(
+                  color: Color(0xFFF9FAFC),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
                 ),
-                const SizedBox(height: 20),
-                _MajorField(
-                  label: 'Tên chuyên ngành',
-                  controller: nameController,
-                  hintText: 'Nhập tên chuyên ngành',
-                ),
-                const SizedBox(height: 16),
-                _MajorField(
-                  label: 'Mô tả',
-                  controller: descController,
-                  hintText: 'Nhập mô tả',
-                  maxLines: 3,
-                ),
-                const SizedBox(height: 22),
-                Row(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => Navigator.pop(sheetContext, false),
-                        style: OutlinedButton.styleFrom(
-                          minimumSize: const Size.fromHeight(54),
-                          foregroundColor: const Color(0xFF334155),
-                          side: const BorderSide(
-                            color: Color(0xFFE2E8F0),
-                            width: 1.2,
-                          ),
-                          backgroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                        ),
-                        child: const Text(
-                          'Hủy',
-                          style: TextStyle(fontWeight: FontWeight.w800),
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.fromLTRB(20, 14, 20, 16),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 54,
+                              height: 6,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFD7DCE7),
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                            ),
+                            const SizedBox(height: 18),
+                            Text(
+                              major == null
+                                  ? 'Thêm chuyên ngành'
+                                  : 'Sửa chuyên ngành',
+                              style: const TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.w900,
+                                color: Color(0xFF0F172A),
+                              ),
+                            ),
+                            const SizedBox(height: 20),
+                            _MajorField(
+                              label: 'Tên chuyên ngành',
+                              controller: nameController,
+                              hintText: 'Nhập tên chuyên ngành',
+                            ),
+                            const SizedBox(height: 16),
+                            _MajorField(
+                              label: 'Mô tả',
+                              controller: descController,
+                              hintText: 'Nhập mô tả',
+                              maxLines: 3,
+                            ),
+                          ],
                         ),
                       ),
                     ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: FilledButton(
-                        onPressed: () => Navigator.pop(sheetContext, true),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: _primary,
-                          minimumSize: const Size.fromHeight(54),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
+
+                    Container(
+                      padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFF9FAFC),
+                        border: Border(
+                          top: BorderSide(color: Color(0xFFE2E8F0)),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () {
+                                FocusScope.of(sheetContext).unfocus();
+
+                                Future.delayed(
+                                  const Duration(milliseconds: 120),
+                                  () {
+                                    if (Navigator.of(sheetContext).canPop()) {
+                                      Navigator.of(sheetContext).pop(null);
+                                    }
+                                  },
+                                );
+                              },
+                              style: OutlinedButton.styleFrom(
+                                minimumSize: const Size.fromHeight(50),
+                                foregroundColor: const Color(0xFF334155),
+                                side: const BorderSide(
+                                  color: Color(0xFFE2E8F0),
+                                  width: 1.2,
+                                ),
+                                backgroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                              ),
+                              child: const Text(
+                                'Hủy',
+                                style: TextStyle(fontWeight: FontWeight.w800),
+                              ),
+                            ),
                           ),
-                        ),
-                        child: const Text(
-                          'Lưu',
-                          style: TextStyle(fontWeight: FontWeight.w800),
-                        ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: FilledButton(
+                              onPressed: () {
+                                final name = nameController.text.trim();
+                                final description = descController.text.trim();
+
+                                if (name.isEmpty) {
+                                  showDialog(
+                                    context: sheetContext,
+                                    barrierDismissible: true,
+                                    builder: (context) {
+                                      return AlertDialog(
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            22,
+                                          ),
+                                        ),
+                                        title: const Text(
+                                          'Thiếu thông tin',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.w900,
+                                          ),
+                                        ),
+                                        content: const Text(
+                                          'Vui lòng nhập tên chuyên ngành.',
+                                        ),
+                                        actions: [
+                                          FilledButton(
+                                            onPressed: () =>
+                                                Navigator.pop(context),
+                                            style: FilledButton.styleFrom(
+                                              backgroundColor: _primary,
+                                              foregroundColor: Colors.white,
+                                            ),
+                                            child: const Text('Đã hiểu'),
+                                          ),
+                                        ],
+                                      );
+                                    },
+                                  );
+                                  return;
+                                }
+
+                                FocusScope.of(sheetContext).unfocus();
+
+                                Future.delayed(
+                                  const Duration(milliseconds: 120),
+                                  () {
+                                    if (Navigator.of(sheetContext).canPop()) {
+                                      Navigator.of(sheetContext).pop({
+                                        'name': name,
+                                        'description': description,
+                                      });
+                                    }
+                                  },
+                                );
+                              },
+                              style: FilledButton.styleFrom(
+                                backgroundColor: _primary,
+                                minimumSize: const Size.fromHeight(50),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                              ),
+                              child: const Text(
+                                'Lưu',
+                                style: TextStyle(fontWeight: FontWeight.w800),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
                 ),
-              ],
+              ),
             ),
-          ),
-        );
-      },
-    );
+          );
+        },
+      );
 
-    nameController.dispose();
-    descController.dispose();
+      if (result == null) return;
 
-    if (ok != true) return;
+      final name = result['name'] ?? '';
+      final description = result['description'] ?? '';
 
-    try {
       if (major == null) {
-        await _repo.createMajor(
-          name: nameController.text.trim(),
-          description: descController.text.trim(),
-        );
+        await _repo.createMajor(name: name, description: description);
       } else {
         await _repo.updateMajor(
           id: major['id'].toString(),
-          name: nameController.text.trim(),
-          description: descController.text.trim(),
+          name: name,
+          description: description,
         );
       }
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            major == null ? 'Đã thêm chuyên ngành' : 'Đã cập nhật chuyên ngành',
-          ),
-        ),
+
+      _showSuccessDialog(
+        major == null
+            ? 'Chuyên ngành mới đã được thêm vào hệ thống.'
+            : 'Thông tin chuyên ngành đã được cập nhật.',
       );
+
       setState(() {});
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Lỗi: $e')));
+
+      _showErrorDialog(e.toString());
+    } finally {
+      await Future.delayed(const Duration(milliseconds: 250));
+      nameController.dispose();
+      descController.dispose();
     }
   }
 
@@ -309,6 +403,166 @@ class _AdminMajorsScreenState extends State<AdminMajorsScreen> {
         context,
       ).showSnackBar(SnackBar(content: Text('Lỗi: $e')));
     }
+  }
+
+  void _showSuccessDialog(String message) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) {
+        return Dialog(
+          insetPadding: const EdgeInsets.symmetric(horizontal: 28),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(26),
+          ),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(22, 24, 22, 18),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(26),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 72,
+                  height: 72,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFEFFDF5),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.check_circle_rounded,
+                    color: Color(0xFF16A34A),
+                    size: 46,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                const Text(
+                  'Thành công',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 21,
+                    fontWeight: FontWeight.w900,
+                    color: Color(0xFF0F172A),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  message,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 14.5,
+                    height: 1.4,
+                    color: Color(0xFF64748B),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: FilledButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: _primary,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                    child: const Text(
+                      'Đã hiểu',
+                      style: TextStyle(fontWeight: FontWeight.w900),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showErrorDialog(String message) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) {
+        return Dialog(
+          insetPadding: const EdgeInsets.symmetric(horizontal: 28),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(26),
+          ),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(22, 24, 22, 18),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(26),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 72,
+                  height: 72,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFFFF1F2),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.error_rounded,
+                    color: Color(0xFFDC2626),
+                    size: 46,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                const Text(
+                  'Có lỗi xảy ra',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 21,
+                    fontWeight: FontWeight.w900,
+                    color: Color(0xFF0F172A),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  message,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 14.5,
+                    height: 1.4,
+                    color: Color(0xFF64748B),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: FilledButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFFDC2626),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                    child: const Text(
+                      'Đóng',
+                      style: TextStyle(fontWeight: FontWeight.w900),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   @override

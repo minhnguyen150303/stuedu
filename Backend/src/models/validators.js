@@ -498,17 +498,59 @@ function validateSemesterCyclePatch(body) {
 
 function validateMaterial(body) {
     const errors = [];
-    if (!requiredString(body.classId)) errors.push("classId is required");
-    if (!requiredString(body.title)) errors.push("title is required");
+
+    if (!requiredString(body.classId)) {
+        errors.push("classId is required");
+    }
+
+    if (!requiredString(body.title)) {
+        errors.push("title is required");
+    }
+
     if (!requiredString(body.type)) {
         errors.push("type is required");
     } else {
-        const allowed = ["link", "pdf", "image", "file"];
+        const allowed = [
+            "link",
+            "pdf",
+            "image",
+            "file",
+            "doc",
+            "sheet",
+            "slide",
+            "text",
+            "archive",
+        ];
+
         if (!allowed.includes(body.type)) {
-            errors.push("type must be link/pdf/image/file");
+            errors.push("type must be link/pdf/image/file/doc/sheet/slide/text/archive");
         }
     }
-    if (!requiredString(body.url)) errors.push("url is required");
+
+    if (!requiredString(body.url)) {
+        errors.push("url is required");
+    }
+
+    if (body.downloadUrl != null && typeof body.downloadUrl !== "string") {
+        errors.push("downloadUrl must be string");
+    }
+
+    if (body.publicId != null && typeof body.publicId !== "string") {
+        errors.push("publicId must be string");
+    }
+
+    if (body.resourceType != null && typeof body.resourceType !== "string") {
+        errors.push("resourceType must be string");
+    }
+
+    if (body.originalName != null && typeof body.originalName !== "string") {
+        errors.push("originalName must be string");
+    }
+
+    if (body.format != null && typeof body.format !== "string") {
+        errors.push("format must be string");
+    }
+
     return { ok: errors.length === 0, errors };
 }
 
