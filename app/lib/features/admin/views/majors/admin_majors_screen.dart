@@ -259,7 +259,7 @@ class _AdminMajorsScreenState extends State<AdminMajorsScreen> {
     } catch (e) {
       if (!mounted) return;
 
-      _showErrorDialog(e.toString());
+      _showErrorDialog(_friendlyError(e));
     } finally {
       await Future.delayed(const Duration(milliseconds: 250));
       nameController.dispose();
@@ -267,7 +267,11 @@ class _AdminMajorsScreenState extends State<AdminMajorsScreen> {
     }
   }
 
-  Future<void> _deleteMajor(Map<String, dynamic> major) async {
+  Future<void> _toggleMajorVisibility(Map<String, dynamic> major) async {
+    final isActive = major['isActive'] != false && major['hidden'] != true;
+    final nextActive = !isActive;
+    final majorName = (major['name'] ?? 'Chuyên ngành').toString();
+
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => Dialog(
@@ -293,24 +297,32 @@ class _AdminMajorsScreenState extends State<AdminMajorsScreen> {
                 width: 72,
                 height: 72,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFFE4E6),
+                  color: nextActive
+                      ? const Color(0xFFEFF6FF)
+                      : const Color(0xFFFFF4DB),
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color: const Color(0xFFFECACA),
+                    color: nextActive
+                        ? const Color(0xFFBFDBFE)
+                        : const Color(0xFFFCD34D),
                     width: 1.2,
                   ),
                 ),
-                child: const Icon(
-                  Icons.delete_rounded,
+                child: Icon(
+                  nextActive
+                      ? Icons.visibility_rounded
+                      : Icons.visibility_off_rounded,
                   size: 34,
-                  color: Color(0xFFDC2626),
+                  color: nextActive
+                      ? const Color(0xFF2563EB)
+                      : const Color(0xFFB45309),
                 ),
               ),
               const SizedBox(height: 18),
-              const Text(
-                'Xóa chuyên ngành?',
+              Text(
+                nextActive ? 'Hiện lại chuyên ngành?' : 'Ẩn chuyên ngành?',
                 textAlign: TextAlign.center,
-                style: TextStyle(
+                style: const TextStyle(
                   fontSize: 22,
                   fontWeight: FontWeight.w900,
                   color: Color(0xFF0F172A),
@@ -318,7 +330,9 @@ class _AdminMajorsScreenState extends State<AdminMajorsScreen> {
               ),
               const SizedBox(height: 8),
               Text(
-                'Bạn sắp xóa "${major['name']}". Hành động này có thể ảnh hưởng dữ liệu liên quan.',
+                nextActive
+                    ? 'Chuyên ngành "$majorName" sẽ hiển thị lại trong hệ thống.'
+                    : 'Chuyên ngành "$majorName" sẽ bị ẩn khỏi danh sách hoạt động. Chỉ được ẩn khi tất cả học kỳ liên quan đã kết thúc.',
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   fontSize: 15,
@@ -363,16 +377,18 @@ class _AdminMajorsScreenState extends State<AdminMajorsScreen> {
                       child: FilledButton(
                         onPressed: () => Navigator.pop(context, true),
                         style: FilledButton.styleFrom(
-                          backgroundColor: const Color(0xFFDC2626),
+                          backgroundColor: nextActive
+                              ? const Color(0xFF2563EB)
+                              : const Color(0xFFB45309),
                           foregroundColor: Colors.white,
                           elevation: 0,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(16),
                           ),
                         ),
-                        child: const Text(
-                          'Xóa',
-                          style: TextStyle(
+                        child: Text(
+                          nextActive ? 'Hiện lại' : 'Ẩn',
+                          style: const TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.w900,
                           ),
@@ -391,18 +407,75 @@ class _AdminMajorsScreenState extends State<AdminMajorsScreen> {
     if (ok != true) return;
 
     try {
-      await _repo.deleteMajor(major['id'].toString());
+      if (nextActive) {
+        await _repo.showMajor(major['id'].toString());
+      } else {
+        await _repo.hideMajor(major['id'].toString());
+      }
+
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Đã xóa chuyên ngành')));
+
+      _showSuccessDialog(
+        nextActive
+            ? 'Chuyên ngành đã được hiện lại trong hệ thống.'
+            : 'Chuyên ngành đã được ẩn khỏi danh sách hoạt động.',
+      );
+
       setState(() {});
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Lỗi: $e')));
+
+      _showErrorDialog(_friendlyError(e));
     }
+  }
+
+  String _friendlyError(Object error) {
+    var msg = error.toString();
+
+    msg = msg
+        .replaceAll('Exception: ', '')
+        .replaceAll('DioException [bad response]: ', '')
+        .replaceAll('DioException: ', '')
+        .trim();
+
+    final knownMessages = [
+      'Không thể ẩn chuyên ngành',
+      'Học kỳ chưa kết thúc',
+      'Chỉ được ẩn',
+      'Major not found',
+      'Forbidden',
+      'Unauthorized',
+    ];
+
+    for (final key in knownMessages) {
+      final index = msg.indexOf(key);
+      if (index >= 0) {
+        msg = msg.substring(index).trim();
+        break;
+      }
+    }
+
+    if (msg.contains('400')) {
+      return 'Không thể thực hiện thao tác này. Chuyên ngành chỉ được ẩn khi tất cả học kỳ liên quan đã kết thúc.';
+    }
+
+    if (msg.contains('403') || msg.contains('Forbidden')) {
+      return 'Bạn không có quyền thực hiện thao tác này.';
+    }
+
+    if (msg.contains('404') || msg.contains('Major not found')) {
+      return 'Không tìm thấy chuyên ngành này.';
+    }
+
+    if (msg.isEmpty) {
+      return 'Có lỗi xảy ra, vui lòng thử lại.';
+    }
+
+    if (msg.length > 260) {
+      return '${msg.substring(0, 260)}...';
+    }
+
+    return msg;
   }
 
   void _showSuccessDialog(String message) {
@@ -677,7 +750,7 @@ class _AdminMajorsScreenState extends State<AdminMajorsScreen> {
                       return _MajorCard(
                         major: major,
                         onEdit: () => _showMajorForm(major: major),
-                        onDelete: () => _deleteMajor(major),
+                        onDelete: () => _toggleMajorVisibility(major),
                         onDetail: () async {
                           await Navigator.push(
                             context,
@@ -771,12 +844,16 @@ class _MajorCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final name = (major['name'] ?? '').toString();
     final desc = (major['description'] ?? '').toString();
+    final isActive = major['isActive'] != false && major['hidden'] != true;
 
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isActive ? Colors.white : const Color(0xFFFFFBEB),
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(
+          color: isActive ? const Color(0xFFE2E8F0) : const Color(0xFFFCD34D),
+          width: isActive ? 1 : 1.3,
+        ),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.04),
@@ -795,12 +872,16 @@ class _MajorCard extends StatelessWidget {
                   width: 48,
                   height: 48,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFEDEFF6),
+                    color: isActive
+                        ? const Color(0xFFEDEFF6)
+                        : const Color(0xFFFFF4DB),
                     borderRadius: BorderRadius.circular(14),
                   ),
-                  child: const Icon(
-                    Icons.account_tree_rounded,
-                    color: _primary,
+                  child: Icon(
+                    isActive
+                        ? Icons.account_tree_rounded
+                        : Icons.visibility_off_rounded,
+                    color: isActive ? _primary : const Color(0xFFB45309),
                     size: 24,
                   ),
                 ),
@@ -808,10 +889,12 @@ class _MajorCard extends StatelessWidget {
                 Expanded(
                   child: Text(
                     name,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 21,
                       fontWeight: FontWeight.w900,
-                      color: Color(0xFF111827),
+                      color: isActive
+                          ? const Color(0xFF111827)
+                          : const Color(0xFF92400E),
                     ),
                   ),
                 ),
@@ -839,22 +922,30 @@ class _MajorCard extends StatelessWidget {
                   vertical: 7,
                 ),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFE7F7EE),
+                  color: isActive
+                      ? const Color(0xFFE7F7EE)
+                      : const Color(0xFFFFF4DB),
                   borderRadius: BorderRadius.circular(999),
                 ),
-                child: const Row(
+                child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(
-                      Icons.check_circle_rounded,
+                      isActive
+                          ? Icons.check_circle_rounded
+                          : Icons.visibility_off_rounded,
                       size: 15,
-                      color: Color(0xFF0F9B63),
+                      color: isActive
+                          ? const Color(0xFF0F9B63)
+                          : const Color(0xFFB45309),
                     ),
-                    SizedBox(width: 5),
+                    const SizedBox(width: 5),
                     Text(
-                      'Đang hoạt động',
+                      isActive ? 'Đang hoạt động' : 'Đã ẩn',
                       style: TextStyle(
-                        color: Color(0xFF0F9B63),
+                        color: isActive
+                            ? const Color(0xFF0F9B63)
+                            : const Color(0xFFB45309),
                         fontWeight: FontWeight.w800,
                         fontSize: 12.5,
                       ),
@@ -892,12 +983,20 @@ class _MajorCard extends StatelessWidget {
                 const SizedBox(width: 8),
                 Expanded(
                   child: _CardActionButton(
-                    tooltip: 'Xóa',
-                    icon: Icons.delete_rounded,
-                    text: 'Xóa',
-                    foregroundColor: const Color(0xFFDC2626),
-                    backgroundColor: const Color(0xFFFFE4E6),
-                    borderColor: const Color(0xFFFECACA),
+                    tooltip: isActive ? 'Ẩn' : 'Hiện lại',
+                    icon: isActive
+                        ? Icons.visibility_off_rounded
+                        : Icons.visibility_rounded,
+                    text: isActive ? 'Ẩn' : 'Hiện lại',
+                    foregroundColor: isActive
+                        ? const Color(0xFFB45309)
+                        : const Color(0xFF2563EB),
+                    backgroundColor: isActive
+                        ? const Color(0xFFFFF4DB)
+                        : const Color(0xFFEFF6FF),
+                    borderColor: isActive
+                        ? const Color(0xFFFCD34D)
+                        : const Color(0xFFBFDBFE),
                     onPressed: onDelete,
                   ),
                 ),

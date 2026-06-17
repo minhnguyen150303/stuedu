@@ -58,6 +58,148 @@ class _StudentCoursesScreenState extends State<StudentCoursesScreen> {
     }
   }
 
+  int _toInt(dynamic value) {
+    if (value is num) return value.toInt();
+    return int.tryParse((value ?? '').toString()) ?? 0;
+  }
+
+  Widget _buildSelectedCourseInfo(Map<String, dynamic> course) {
+    final classes = List<Map<String, dynamic>>.from(
+      ((course['classes'] as List?) ?? const []).map(
+        (e) => Map<String, dynamic>.from(e as Map),
+      ),
+    );
+
+    final courseCode = (course['courseCode'] ?? '').toString();
+    final courseName = (course['courseName'] ?? '').toString();
+    final description = (course['description'] ?? '').toString().trim();
+    final credits = _toInt(course['credits']);
+    final suggestedYear = _toInt(course['suggestedYear']);
+    final totalClasses = classes.length;
+
+    final totalMaxStudents = classes.fold<int>(
+      0,
+      (sum, cls) => sum + _toInt(cls['maxStudents']),
+    );
+
+    final totalEnrolled = classes.fold<int>(
+      0,
+      (sum, cls) =>
+          sum +
+          _toInt(
+            cls['enrolledCount'] ??
+                cls['currentStudents'] ??
+                cls['approvedCount'] ??
+                0,
+          ),
+    );
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFBFDBFE)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEFF6FF),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Icon(
+                  Icons.menu_book_rounded,
+                  color: Color(0xFF2563EB),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      courseCode.isEmpty ? 'Mã môn chưa cập nhật' : courseCode,
+                      style: const TextStyle(
+                        color: Color(0xFF64748B),
+                        fontWeight: FontWeight.w800,
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      courseName.isEmpty ? 'Tên môn chưa cập nhật' : courseName,
+                      style: const TextStyle(
+                        color: Color(0xFF0F172A),
+                        fontWeight: FontWeight.w900,
+                        fontSize: 17,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _InfoChip(icon: Icons.star_rounded, text: '$credits tín chỉ'),
+              _InfoChip(
+                icon: Icons.school_rounded,
+                text: suggestedYear > 0 ? 'Năm $suggestedYear' : 'Chưa rõ năm',
+              ),
+              _InfoChip(
+                icon: Icons.groups_rounded,
+                text: '$totalClasses lớp mở',
+              ),
+              _InfoChip(
+                icon: Icons.person_add_alt_1_rounded,
+                text: totalMaxStudents > 0
+                    ? '$totalEnrolled/$totalMaxStudents đã đăng ký'
+                    : '$totalEnrolled đã đăng ký',
+              ),
+            ],
+          ),
+          if (description.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            const Text(
+              'Mô tả môn học',
+              style: TextStyle(
+                color: Color(0xFF0F172A),
+                fontWeight: FontWeight.w900,
+                fontSize: 14,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              description,
+              style: const TextStyle(
+                color: Color(0xFF475569),
+                height: 1.45,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Future<void> _loadData() async {
     try {
       final data = await _repo.getCourseRegistrationData();
@@ -421,6 +563,9 @@ class _StudentCoursesScreenState extends State<StudentCoursesScreen> {
           const SizedBox(height: 18),
 
           if (_selectedCourse != null) ...[
+            _buildSelectedCourseInfo(_selectedCourse!),
+            const SizedBox(height: 18),
+
             const Text(
               'Chọn lớp',
               style: TextStyle(
@@ -436,9 +581,28 @@ class _StudentCoursesScreenState extends State<StudentCoursesScreen> {
               ),
             ).map((cls) {
               final alreadyEnrolled = cls['alreadyEnrolled'] == true;
+
+              final maxStudents = _toInt(cls['maxStudents']);
+              final enrolledCount = _toInt(
+                cls['enrolledCount'] ??
+                    cls['currentStudents'] ??
+                    cls['approvedCount'] ??
+                    0,
+              );
+              final pendingCount = _toInt(cls['pendingCount']);
+              final registeredCount = _toInt(
+                cls['registeredCount'] ?? enrolledCount + pendingCount,
+              );
+
+              final isFull = maxStudents > 0 && enrolledCount >= maxStudents;
+              final progressValue = maxStudents > 0
+                  ? (enrolledCount / maxStudents).clamp(0.0, 1.0).toDouble()
+                  : 0.0;
+
               final disabled =
                   (_selectedCourse!['completed'] == true) ||
                   alreadyEnrolled ||
+                  isFull ||
                   !registrationEnabled;
 
               return Padding(
@@ -453,15 +617,30 @@ class _StudentCoursesScreenState extends State<StudentCoursesScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        (cls['classCode'] ?? '').toString(),
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w900,
-                          color: Color(0xFF0F172A),
-                        ),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              (cls['classCode'] ?? '').toString(),
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w900,
+                                color: Color(0xFF0F172A),
+                              ),
+                            ),
+                          ),
+                          _StatusBadge(
+                            text: isFull ? 'Đã đủ sĩ số' : 'Còn chỗ',
+                            bg: isFull
+                                ? const Color(0xFFFEE2E2)
+                                : const Color(0xFFDCFCE7),
+                            fg: isFull
+                                ? const Color(0xFF991B1B)
+                                : const Color(0xFF166534),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 6),
+                      const SizedBox(height: 8),
                       Text(
                         'Phòng: ${(cls['room'] ?? '').toString().isEmpty ? "Chưa cập nhật" : cls['room']}',
                         style: const TextStyle(color: Color(0xFF64748B)),
@@ -471,6 +650,43 @@ class _StudentCoursesScreenState extends State<StudentCoursesScreen> {
                         'Năm mở lớp: ${cls['yearNumber'] ?? "-"}',
                         style: const TextStyle(color: Color(0xFF64748B)),
                       ),
+                      const SizedBox(height: 6),
+                      Text(
+                        maxStudents > 0
+                            ? 'Sĩ số: $enrolledCount/$maxStudents sinh viên đã đăng ký'
+                            : 'Sĩ số đã đăng ký: $enrolledCount sinh viên',
+                        style: const TextStyle(
+                          color: Color(0xFF0F172A),
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      if (pendingCount > 0) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          'Có $pendingCount sinh viên đang chờ duyệt, tổng đăng ký: $registeredCount',
+                          style: const TextStyle(
+                            color: Color(0xFF92400E),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                      if (maxStudents > 0) ...[
+                        const SizedBox(height: 8),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(999),
+                          child: LinearProgressIndicator(
+                            value: progressValue,
+                            minHeight: 8,
+                            backgroundColor: const Color(0xFFE5E7EB),
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              isFull
+                                  ? const Color(0xFFEF4444)
+                                  : const Color(0xFF2563EB),
+                            ),
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 10),
                       ...List<Map<String, dynamic>>.from(
                         ((cls['schedule'] as List?) ?? const []).map(
@@ -503,6 +719,8 @@ class _StudentCoursesScreenState extends State<StudentCoursesScreen> {
                           child: Text(
                             alreadyEnrolled
                                 ? 'Đã đăng ký lớp này'
+                                : isFull
+                                ? 'Lớp đã đủ sĩ số'
                                 : 'Đăng ký lớp',
                           ),
                         ),
@@ -573,6 +791,40 @@ class _StatusBadge extends StatelessWidget {
       child: Text(
         text,
         style: TextStyle(color: fg, fontWeight: FontWeight.w800, fontSize: 12),
+      ),
+    );
+  }
+}
+
+class _InfoChip extends StatelessWidget {
+  final IconData icon;
+  final String text;
+
+  const _InfoChip({required this.icon, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: const Color(0xFF2563EB)),
+          const SizedBox(width: 6),
+          Text(
+            text,
+            style: const TextStyle(
+              color: Color(0xFF334155),
+              fontWeight: FontWeight.w800,
+              fontSize: 12,
+            ),
+          ),
+        ],
       ),
     );
   }

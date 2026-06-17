@@ -17,6 +17,20 @@ router.post(
 );
 
 router.patch(
+    "/:id/hide",
+    requireAuth,
+    requireRole(["admin"]),
+    asyncHandler(controller.hide)
+);
+
+router.patch(
+    "/:id/show",
+    requireAuth,
+    requireRole(["admin"]),
+    asyncHandler(controller.show)
+);
+
+router.patch(
     "/:id",
     requireAuth,
     requireRole(["admin"]),
@@ -24,6 +38,7 @@ router.patch(
     asyncHandler(controller.update)
 );
 
+// Giữ route cũ để app chưa sửa vẫn chạy, nhưng không xóa thật nữa.
 router.delete(
     "/:id",
     requireAuth,

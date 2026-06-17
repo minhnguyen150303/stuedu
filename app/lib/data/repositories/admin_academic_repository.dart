@@ -57,6 +57,22 @@ class AdminAcademicRepository {
     return Map<String, dynamic>.from(data as Map);
   }
 
+  Future<Map<String, dynamic>> hideMajor(String id) async {
+    await _attachToken();
+
+    final data = await api.patch('/majors/$id/hide');
+
+    return Map<String, dynamic>.from(data as Map);
+  }
+
+  Future<Map<String, dynamic>> showMajor(String id) async {
+    await _attachToken();
+
+    final data = await api.patch('/majors/$id/show');
+
+    return Map<String, dynamic>.from(data as Map);
+  }
+
   Future<List<Map<String, dynamic>>> getSemesters({
     required String majorId,
   }) async {

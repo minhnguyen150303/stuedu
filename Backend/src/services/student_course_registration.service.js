@@ -218,6 +218,38 @@ async function getStudentEnrollmentsInSemester(studentId, semesterId) {
     return results;
 }
 
+async function getEnrollmentCountMapByClassIds(classIds = []) {
+    const uniqueClassIds = [...new Set(classIds.filter(Boolean))];
+    const result = {};
+
+    for (const classId of uniqueClassIds) {
+        const snap = await db.collection("enrollments")
+            .where("classId", "==", classId)
+            .get();
+
+        let approvedCount = 0;
+        let pendingCount = 0;
+
+        for (const doc of snap.docs) {
+            const status = (doc.data()?.status || "").toString();
+
+            if (status === "approved") {
+                approvedCount += 1;
+            } else if (status === "pending") {
+                pendingCount += 1;
+            }
+        }
+
+        result[classId] = {
+            approvedCount,
+            pendingCount,
+            registeredCount: approvedCount + pendingCount,
+        };
+    }
+
+    return result;
+}
+
 async function listStudentCourseRegistration(studentId) {
     const student = await getStudentProfile(studentId);
 
@@ -308,15 +340,34 @@ async function listStudentCourseRegistration(studentId) {
         .where("isVisibleForRegistration", "==", true)
         .get();
 
-    for (const doc of classSnap.docs) {
+    const visibleClassDocs = classSnap.docs.filter((doc) => {
         const cls = doc.data() || {};
         const courseId = (cls.courseId || "").toString();
         const yearNumberSnapshot = Number(cls.yearNumberSnapshot || 0);
         const adminState = (cls.adminState || "draft").toString();
 
-        if (!courseId) continue;
-        if (adminState === "archived") continue;
-        if (yearNumberSnapshot > student.studentYear) continue;
+        if (!courseId) return false;
+        if (adminState === "archived") return false;
+        if (yearNumberSnapshot > student.studentYear) return false;
+
+        return true;
+    });
+
+    const enrollmentCountMap = await getEnrollmentCountMapByClassIds(
+        visibleClassDocs.map((doc) => doc.id)
+    );
+
+    for (const doc of visibleClassDocs) {
+        const cls = doc.data() || {};
+        const courseId = (cls.courseId || "").toString();
+        const yearNumberSnapshot = Number(cls.yearNumberSnapshot || 0);
+        const maxStudents = Number(cls.maxStudents || 0);
+
+        const counts = enrollmentCountMap[doc.id] || {
+            approvedCount: 0,
+            pendingCount: 0,
+            registeredCount: 0,
+        };
 
         if (!classBuckets[courseId]) classBuckets[courseId] = [];
         classBuckets[courseId].push({
@@ -325,10 +376,20 @@ async function listStudentCourseRegistration(studentId) {
             classCode: cls.classCode || "",
             room: cls.room || "",
             schedule: Array.isArray(cls.schedule) ? cls.schedule : [],
-            maxStudents: Number(cls.maxStudents || 0),
+
+            maxStudents,
+            approvedCount: counts.approvedCount,
+            pendingCount: counts.pendingCount,
+            registeredCount: counts.registeredCount,
+
+            // đặt thêm nhiều tên field để Flutter dễ đọc, tránh lỗi lệch tên
+            enrolledCount: counts.approvedCount,
+            currentStudents: counts.approvedCount,
+            availableSlots: Math.max(maxStudents - counts.approvedCount, 0),
+
             yearNumber: yearNumberSnapshot,
             termNumber: Number(cls.termNumberSnapshot || 0),
-            adminState,
+            adminState: (cls.adminState || "draft").toString(),
         });
     }
 
@@ -348,11 +409,19 @@ async function listStudentCourseRegistration(studentId) {
                 ["pending", "approved"].includes(enrolledStatus || ""),
         }));
 
+        classes.sort((a, b) => {
+            return (a.classCode || "")
+                .toString()
+                .localeCompare((b.classCode || "").toString());
+        });
+
         return {
             courseId,
             courseCode: course.courseCode || "",
             courseName: course.courseName || "",
+            description: course.description || "",
             credits: Number(course.credits || 0),
+            majorId: course.majorId || student.majorId,
             suggestedYear: courseYear,
             completed,
             completedLabel: completed ? "Đã học xong" : null,

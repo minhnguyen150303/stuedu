@@ -1,6 +1,7 @@
 const cron = require("node-cron");
 const { runClassGenerationJob } = require("../services/class_generation.service");
 const { runClassStateSyncJob } = require("../services/class_state_sync.service");
+const classChatSyncService = require("../services/class_chat_sync.service");
 
 let started = false;
 
@@ -37,9 +38,19 @@ async function runSyncClassStatesSafe() {
     }
 }
 
+async function runSyncClassChatsSafe() {
+    try {
+        const result = await classChatSyncService.syncAllActiveClassChats();
+        logJob("sync-class-chats", result);
+    } catch (error) {
+        logJobError("sync-class-chats", error);
+    }
+}
+
 async function runSchedulerRound() {
     await runGenerateClassesSafe();
     await runSyncClassStatesSafe();
+    await runSyncClassChatsSafe();
 }
 
 function startScheduler() {

@@ -84,6 +84,210 @@ class _MajorDetailScreenState extends State<MajorDetailScreen> {
     return parts.first[0].toUpperCase();
   }
 
+  String _friendlyError(Object error) {
+    var msg = error.toString();
+
+    msg = msg
+        .replaceAll('Exception: ', '')
+        .replaceAll('DioException [bad response]: ', '')
+        .replaceAll('DioException: ', '')
+        .trim();
+
+    if (msg.contains('Học kỳ chưa kết thúc') || msg.contains('không thể ẩn')) {
+      return 'Không thể ẩn học kỳ vì học kỳ chưa kết thúc. Chỉ được ẩn học kỳ sau khi học kỳ đã kết thúc.';
+    }
+
+    if (msg.contains('Semester cycle not found')) {
+      return 'Không tìm thấy học kỳ này.';
+    }
+
+    if (msg.contains('Semester cycle already exists')) {
+      return 'Học kỳ này đã tồn tại trong chuyên ngành.';
+    }
+
+    if (msg.contains('400')) {
+      return 'Dữ liệu học kỳ không hợp lệ, vui lòng kiểm tra lại.';
+    }
+
+    if (msg.contains('403') || msg.contains('Forbidden')) {
+      return 'Bạn không có quyền thực hiện thao tác này.';
+    }
+
+    if (msg.contains('404')) {
+      return 'Không tìm thấy dữ liệu cần thao tác.';
+    }
+
+    if (msg.contains('409')) {
+      return 'Dữ liệu đã tồn tại trong hệ thống.';
+    }
+
+    if (msg.length > 260) {
+      return '${msg.substring(0, 260)}...';
+    }
+
+    return msg.isEmpty ? 'Có lỗi xảy ra, vui lòng thử lại.' : msg;
+  }
+
+  void _showErrorDialog(String message) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) {
+        return Dialog(
+          insetPadding: const EdgeInsets.symmetric(horizontal: 28),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(26),
+          ),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(22, 24, 22, 18),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(26),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 72,
+                  height: 72,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFFFF4DB),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.warning_amber_rounded,
+                    color: Color(0xFFB45309),
+                    size: 44,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                const Text(
+                  'Không thể thực hiện',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 21,
+                    fontWeight: FontWeight.w900,
+                    color: Color(0xFF0F172A),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  message,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 14.5,
+                    height: 1.4,
+                    color: Color(0xFF64748B),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: FilledButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: _primary,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                    child: const Text(
+                      'Đã hiểu',
+                      style: TextStyle(fontWeight: FontWeight.w900),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showSuccessDialog(String message) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) {
+        return Dialog(
+          insetPadding: const EdgeInsets.symmetric(horizontal: 28),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(26),
+          ),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(22, 24, 22, 18),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(26),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 72,
+                  height: 72,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFEFFDF5),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.check_circle_rounded,
+                    color: Color(0xFF16A34A),
+                    size: 46,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                const Text(
+                  'Thành công',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 21,
+                    fontWeight: FontWeight.w900,
+                    color: Color(0xFF0F172A),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  message,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 14.5,
+                    height: 1.4,
+                    color: Color(0xFF64748B),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: FilledButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: _primary,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                    child: const Text(
+                      'Đã hiểu',
+                      style: TextStyle(fontWeight: FontWeight.w900),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Future<void> _toggleSemesterVisibility(Map<String, dynamic> item) async {
     final currentActive = item['isActive'] != false;
     final nextActive = !currentActive;
@@ -231,17 +435,15 @@ class _MajorDetailScreenState extends State<MajorDetailScreen> {
       );
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(nextActive ? 'Đã hiện lại học kỳ' : 'Đã ẩn học kỳ'),
-        ),
+      _showSuccessDialog(
+        nextActive
+            ? 'Học kỳ đã được hiện lại trong danh sách hoạt động.'
+            : 'Học kỳ đã được ẩn khỏi danh sách hoạt động.',
       );
       setState(() {});
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Lỗi: $e')));
+      _showErrorDialog(_friendlyError(e));
     }
   }
 
@@ -587,12 +789,8 @@ class _MajorDetailScreenState extends State<MajorDetailScreen> {
                                       studyStartMonth == null ||
                                       studyEndDay == null ||
                                       studyEndMonth == null) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text(
-                                          'Vui lòng nhập đầy đủ thông tin',
-                                        ),
-                                      ),
+                                    _showErrorDialog(
+                                      'Vui lòng nhập đầy đủ thông tin môn học.',
                                     );
                                     return;
                                   }
@@ -664,17 +862,15 @@ class _MajorDetailScreenState extends State<MajorDetailScreen> {
       }
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(isEdit ? 'Đã cập nhật học kỳ' : 'Đã thêm học kỳ'),
-        ),
+      _showSuccessDialog(
+        isEdit
+            ? 'Đã cập nhật thông tin học kỳ.'
+            : 'Đã thêm học kỳ mới vào chuyên ngành.',
       );
       setState(() {});
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Lỗi: $e')));
+      _showErrorDialog(_friendlyError(e));
     }
   }
 

@@ -15,9 +15,27 @@ async function update(req, res) {
     res.json({ message: "Updated", ...result });
 }
 
-async function remove(req, res) {
-    const result = await service.deleteMajor(req.params.id);
-    res.json({ message: "Deleted", ...result });
+async function hide(req, res) {
+    const result = await service.hideMajor(req.params.id);
+    res.json({ message: "Hidden", ...result });
 }
 
-module.exports = { list, create, update, remove };
+async function show(req, res) {
+    const result = await service.showMajor(req.params.id);
+    res.json({ message: "Shown", ...result });
+}
+
+// Giữ route delete cũ nhưng đổi hành vi thành ẩn.
+async function remove(req, res) {
+    const result = await service.hideMajor(req.params.id);
+    res.json({ message: "Hidden", ...result });
+}
+
+module.exports = {
+    list,
+    create,
+    update,
+    hide,
+    show,
+    remove,
+};

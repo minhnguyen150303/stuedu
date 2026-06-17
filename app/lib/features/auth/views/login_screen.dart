@@ -1,6 +1,6 @@
-import 'dart:io';
+//import 'dart:io';
 
-import 'package:path_provider/path_provider.dart';
+//import 'package:path_provider/path_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import '../view_models/auth_view_model.dart';
@@ -50,12 +50,12 @@ class _LoginScreenState extends State<LoginScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
-  Future<String> _saveTokenToFile(String token) async {
-    final dir = await getApplicationDocumentsDirectory();
-    final file = File('${dir.path}/firebase_id_token.txt');
-    await file.writeAsString(token);
-    return file.path;
-  }
+  // Future<String> _saveTokenToFile(String token) async {
+  //   final dir = await getApplicationDocumentsDirectory();
+  //   final file = File('${dir.path}/firebase_id_token.txt');
+  //   await file.writeAsString(token);
+  //   return file.path;
+  // }
 
   String _prettyError(Object e) {
     if (e is DioException) {
@@ -126,8 +126,8 @@ class _LoginScreenState extends State<LoginScreen> {
       print('TOKEN_LENGTH=${token.length}');
       print('FIREBASE_ID_TOKEN=$token');
 
-      final savedPath = await _saveTokenToFile(token);
-      print('TOKEN_SAVED=$savedPath');
+      // final savedPath = await _saveTokenToFile(token);
+      // print('TOKEN_SAVED=$savedPath');
 
       await _goHome(profile);
     } catch (e) {

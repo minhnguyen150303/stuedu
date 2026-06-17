@@ -257,6 +257,21 @@ async function updateSemesterCycle(id, patch) {
         throw err;
     }
 
+    const currentData = snap.data() || {};
+
+    if (patch.isActive === false) {
+        const academicStartYear = getAcademicStartYear();
+        const currentView = mapCycleDoc(snap, academicStartYear);
+
+        if (currentView.status !== "finished") {
+            const err = new Error(
+                "Học kỳ chưa kết thúc nên không thể ẩn. Chỉ được ẩn học kỳ sau khi học kỳ đã kết thúc."
+            );
+            err.statusCode = 400;
+            throw err;
+        }
+    }
+
     const payload = {
         updatedAt: new Date(),
     };
